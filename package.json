@@ -1,0 +1,14 @@
+{
+  "name": "pulso-dnb",
+  "version": "0.1.0",
+  "description": "Pulso: estudio de live coding para Drum & Bass (motor de patrones estilo Strudel + motor de audio propio)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

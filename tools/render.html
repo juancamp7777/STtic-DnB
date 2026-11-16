@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Pulso · Análisis</title>
+  <style>
+    :root { --bg: #0c0d12; --panel: #14161e; --text: #dfe3ee; --dim: #8a90a6; --ok: #39e1b4; --warn: #ffb347; --bad: #ff5c5c; }
+    body { background: var(--bg); color: var(--text); font: 13px/1.45 Consolas, 'Cascadia Code', monospace; margin: 0; padding: 16px; }
+    h1 { font: 600 18px system-ui, sans-serif; margin: 0 0 4px; }
+    .hint { color: var(--dim); }
+    form { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; align-items: center; }
+    input, select, button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid #2a2e3d; border-radius: 6px; padding: 5px 9px; }
+    button { cursor: pointer; }
+    table { border-collapse: collapse; margin: 8px 0 16px; }
+    td, th { border-bottom: 1px solid #222634; padding: 3px 10px; text-align: right; }
+    th { color: var(--dim); font-weight: 400; }
+    td:first-child, th:first-child { text-align: left; }
+    .warn { color: var(--warn); } .bad { color: var(--bad); } .ok { color: var(--ok); }
+    .bar { display: inline-block; height: 8px; background: var(--ok); vertical-align: middle; margin-left: 6px; border-radius: 2px; }
+    #out { white-space: normal; }
+  </style>
+</head>
+<body>
+  <h1>Pulso · análisis de mezcla</h1>
+  <div class="hint">Renderiza offline (sin sonar) y mide cada sección: volumen, energía por bandas, anchura estéreo y aportación de cada pista.</div>
+  <form id="f">
+    <label>Fuente
+      <select id="src"></select>
+    </label>
+    <label><input type="checkbox" id="solo" /> aportación por pista (más lento)</label>
+    <button>Analizar</button>
+  </form>
+  <div id="out" class="hint">Elige una fuente y pulsa Analizar. Parámetros de URL: <code>?file=live/sesion.js</code> o <code>?track=id</code>, <code>&amp;solo=1</code>, <code>&amp;auto=1</code>.</div>
+  <script type="module">
+    import { Engine } from '../src/audio/engine.js';
+    import { evaluate } from '../src/core/eval.js';
+    let TRACKS = [];
+    try {
+      ({ TRACKS } = await import('../tracks/index.js'));
+    } catch (e) {
+      // sólo falla el catálogo: analizar un archivo (?file=) sigue funcionando, así que no se toca __analysis
+      window.__catalogError = `tracks/index.js no carga: ${e.message}`;
+    }
+
+    const $ = (id) => document.getElementById(id);
+    const q = new URLSearchParams(location.search);
+    const src = $('src');
+    src.innerHTML = '<option value="file:live/sesion.js">live/sesion.js (sesión compartida)</option>' +
+      TRACKS.map((t) => `<option value="track:${t.id}">${t.title}</option>`).join('');
+    if (q.get('track')) src.value = `track:${q.get('track')}`;
+    if (q.get('file')) {
+      const o = document.createElement('option');
+      o.value = `file:${q.get('file')}`;
+      o.textContent = q.get('file');
+      src.prepend(o);
+      src.value = o.value;
+    }
+    $('solo').checked = q.get('solo') === '1';
+    if (window.__catalogError) {
+      const d = document.createElement('div');
+      d.className = 'warn';
+      d.textContent = `⚠ ${window.__catalogError} (se pueden analizar archivos con ?file=)`;
+      $('out').before(d);
+    }
+
+    // Sólo se analiza código de este servidor (live/ o tracks/): el código se EJECUTA, así que un ?file= que apunte
+    // a otro sitio ("//otro-host/x.js", "https://...") se rechaza.
+    const LOCAL_FILE = /^(live|tracks)\/[\w-]+(\/[\w-]+)*\.(js|json|txt)$/;
+    async function loadCode(v) {
+      if (v.startsWith('track:')) {
+        const id = v.slice(6);
+        if (!/^[\w-]+$/.test(id)) throw new Error(`Id de tema no válido: "${id}"`);
+        try {
+          const m = await import(`../tracks/${id}.js?v=${Date.now()}`);
+          return m.default.code;
+        } catch (e) {
+          const t = TRACKS.find((x) => x.id === id);
+          if (!t) throw new Error(`No se pudo cargar el tema "${id}": ${e.message}`);
+          return t.code;
+        }
+      }
+      const rel = v.slice(5);
+      if (!LOCAL_FILE.test(rel)) throw new Error(`Sólo se pueden analizar archivos de live/ o tracks/ de este servidor (llegó "${rel}")`);
+      const url = new URL(`/${rel}?t=${Date.now()}`, location.origin);
+      if (url.origin !== location.origin) throw new Error('Fuente no local');
+      const r = await fetch(url, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`No existe ${rel}`);
+      return r.text();
+    }
+
+    // Biquad RBJ en JS (para medir bandas sobre el audio renderizado)
+    function biquad(type, f, sr, q = 0.7071) {
+      const w = (2 * Math.PI * f) / sr;
+      const cos = Math.cos(w);
+      const alpha = Math.sin(w) / (2 * q);
+      let b0, b1, b2;
+      if (type === 'lp') {
+        b0 = (1 - cos) / 2; b1 = 1 - cos; b2 = (1 - cos) / 2;
+      } else {
+        b0 = (1 + cos) / 2; b1 = -(1 + cos); b2 = (1 + cos) / 2;
+      }
+      const a0 = 1 + alpha;
+      const a1 = -2 * cos;
+      const a2 = 1 - alpha;
+      const c = [b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0];
+      return (x) => {
+        const y = new Float32Array(x.length);
+        let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+        for (let i = 0; i < x.length; i++) {
+          const v = c[0] * x[i] + c[1] * x1 + c[2] * x2 - c[3] * y1 - c[4] * y2;
+          x2 = x1; x1 = x[i]; y2 = y1; y1 = v; y[i] = v;
+        }
+        return y;
+      };
+    }
+    const rmsDb = (a, from = 0, to = a.length) => {
+      let s = 0;
+      for (let i = from; i < to; i++) s += a[i] * a[i];
+      const r = Math.sqrt(s / Math.max(1, to - from));
+      return r > 0 ? 20 * Math.log10(r) : -120;
+    };
+    const peakDb = (a, from, to) => {
+      let p = 0;
+      for (let i = from; i < to; i++) p = Math.max(p, Math.abs(a[i]));
+      return p > 0 ? 20 * Math.log10(p) : -120;
+    };
+    const f1 = (x) => (x <= -119 ? '—' : x.toFixed(1));
+    const bar = (db) => `<span class="bar" style="width:${Math.max(0, (db + 50) * 2)}px"></span>`;
+
+    async function analyze() {
+      const out = $('out');
+      out.className = '';
+      out.innerHTML = '<span class="hint">Renderizando…</span>';
+      const t0 = performance.now();
+      const code = await loadCode(src.value);
+      const res = await evaluate(code);
+      const secs = res.form ? res.form.sections : [{ name: 'bucle', length: 16 }];
+      const total = secs.reduce((a, s) => a + s.length, 0);
+      const engine = new Engine();
+      const lead = 0.05;
+      const { buffer, stats, warnings: renderWarnings } = await engine.render(code, { cycles: total, tail: 0.5 });
+      const sr = buffer.sampleRate;
+      const L = buffer.getChannelData(0);
+      const R = buffer.getChannelData(1);
+      const mid = new Float32Array(L.length);
+      const side = new Float32Array(L.length);
+      for (let i = 0; i < L.length; i++) {
+        mid[i] = (L[i] + R[i]) / 2;
+        side[i] = (L[i] - R[i]) / 2;
+      }
+      const bands = {
+        sub: biquad('lp', 120, sr)(biquad('lp', 120, sr)(mid)),
+        graves: biquad('lp', 500, sr)(biquad('hp', 120, sr)(mid)),
+        medios: biquad('lp', 4000, sr)(biquad('hp', 500, sr)(mid)),
+        agudos: biquad('hp', 4000, sr)(biquad('hp', 4000, sr)(mid)),
+      };
+      const rows = [];
+      const warnings = [...(res.warnings || []), ...(renderWarnings || [])];
+      let start = 0;
+      for (const s of secs) {
+        const a = Math.floor((lead + start / res.cps) * sr);
+        const b = Math.min(L.length, Math.floor((lead + (start + s.length) / res.cps) * sr));
+        const row = { name: s.name, from: start + 1, to: start + s.length, rms: rmsDb(mid, a, b), peak: Math.max(peakDb(L, a, b), peakDb(R, a, b)), width: rmsDb(side, a, b) - rmsDb(mid, a, b) };
+        for (const [k, arr] of Object.entries(bands)) row[k] = rmsDb(arr, a, b);
+        rows.push(row);
+        if (row.peak > -0.3) warnings.push(`${s.name}: picos a ${row.peak.toFixed(1)} dB (el limitador está apretando)`);
+        if (row.rms < -35) warnings.push(`${s.name}: muy baja (${row.rms.toFixed(1)} dB RMS)`);
+        if (row.sub - row.medios > 12) warnings.push(`${s.name}: el sub domina mucho a los medios (+${(row.sub - row.medios).toFixed(0)} dB)`);
+        if (row.agudos < row.rms - 30) warnings.push(`${s.name}: casi sin agudos`);
+        if (row.width < -25 && row.rms > -30) warnings.push(`${s.name}: casi mono`);
+        start += s.length;
+      }
+      // aportación de cada pista (render en solo de cada una)
+      let trackTable = '';
+      const perTrack = {};
+      if ($('solo').checked) {
+        for (const t of res.tracks.filter((x) => !x.muted)) {
+          out.innerHTML = `<span class="hint">Analizando la pista ${t.name}…</span>`;
+          const r = await engine.render(code, { cycles: total, tail: 0.5, onlyTracks: [t.name] });
+          const d = r.buffer.getChannelData(0);
+          let st = 0;
+          perTrack[t.name] = secs.map((s) => {
+            const a = Math.floor((lead + st / res.cps) * sr);
+            const b = Math.min(d.length, Math.floor((lead + (st + s.length) / res.cps) * sr));
+            st += s.length;
+            return rmsDb(d, a, b);
+          });
+        }
+        trackTable = `<h3>Nivel de cada pista por sección (dB RMS, canal izq.)</h3><table><tr><th>pista</th>${secs.map((s) => `<th>${s.name}</th>`).join('')}</tr>` +
+          Object.entries(perTrack).map(([n, v]) => `<tr><td>${n}</td>${v.map((x) => `<td>${f1(x)}</td>`).join('')}</tr>`).join('') + '</table>';
+      }
+      const secsTxt = ((performance.now() - t0) / 1000).toFixed(1);
+      const result = {
+        source: src.value, bpm: Math.round(res.bpm), seconds: +stats.seconds.toFixed(1), peakDb: +stats.peakDb.toFixed(2), rmsDb: +stats.rmsDb.toFixed(2), nan: stats.nan,
+        sections: rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(1) : v]))),
+        perTrack: Object.fromEntries(Object.entries(perTrack).map(([k, v]) => [k, v.map((x) => +x.toFixed(1))])),
+        warnings,
+      };
+      window.__analysis = result;
+      out.innerHTML = `<div>${result.bpm} BPM · ${result.seconds} s · pico ${f1(result.peakDb)} dB · RMS ${f1(result.rmsDb)} dB · ${stats.events} eventos · análisis en ${secsTxt} s</div>
+        <table><tr><th>sección</th><th>compases</th><th>RMS</th><th>pico</th><th>sub</th><th>graves</th><th>medios</th><th>agudos</th><th>ancho</th><th></th></tr>
+        ${rows.map((r) => `<tr><td>${r.name}</td><td>${r.from}–${r.to}</td><td>${f1(r.rms)}</td><td class="${r.peak > -0.3 ? 'warn' : ''}">${f1(r.peak)}</td><td>${f1(r.sub)}</td><td>${f1(r.graves)}</td><td>${f1(r.medios)}</td><td>${f1(r.agudos)}</td><td>${f1(r.width)}</td><td style="text-align:left">${bar(r.rms)}</td></tr>`).join('')}
+        </table>${trackTable}
+        ${warnings.length ? warnings.map((w) => `<div class="warn">⚠ ${w}</div>`).join('') : '<div class="ok">✔ Sin avisos de mezcla</div>'}`;
+    }
+
+    $('f').onsubmit = (e) => {
+      e.preventDefault();
+      analyze().catch((err) => {
+        $('out').className = 'bad';
+        $('out').textContent = `✖ ${err.message}`;
+        window.__analysis = { error: err.message };
+      });
+    };
+    if (q.get('auto') === '1') $('f').requestSubmit();
+  </script>
+</body>
+</html>

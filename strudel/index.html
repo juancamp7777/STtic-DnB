@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Strudel (comparación)</title>
+  <script src="https://unpkg.com/@strudel/repl@1.3.0"></script>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0b10; color: #ddd; font-family: system-ui, sans-serif; }
+    header { padding: 10px 16px; font-size: 14px; opacity: .8; }
+    kbd { background: #222; border: 1px solid #444; border-radius: 4px; padding: 1px 5px; }
+    strudel-editor { display: block; height: calc(100% - 40px); }
+  </style>
+</head>
+<body>
+  <header>
+    Strudel original (comparación) · <a href="/" style="color:#9cf">volver a Pulso</a> · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> tocar / actualizar · <kbd>Ctrl</kbd>+<kbd>.</kbd> parar
+  </header>
+  <strudel-editor>
+<!--
+// ===== Drum & Bass @ 174 BPM =====
+setcpm(174/4)
+samples('github:tidalcycles/dirt-samples')
+
+stack(
+  // Amen break picado (sección rítmica principal)
+  n("0 1 [2 3] 4 5 [6 6] 7 <8 [12 13]>")
+    .s("amencutup")
+    .gain(.75)
+    .lpf(6000),
+
+  // Kick + snare en patrón "two-step"
+  s("bd ~ ~ ~ ~ bd ~ ~, ~ ~ sn ~ ~ ~ sn ~")
+    .gain(1.1),
+
+  // Hats con acento
+  s("hh*16")
+    .gain("[.25 .5]*8")
+    .pan(sine.range(.3,.7).fast(2)),
+
+  // Bajo Reese (dos sierras desafinadas + filtro que se mueve)
+  note("<d1 d1 f1 [c1 a0]>")
+    .s("sawtooth")
+    .superimpose(x => x.add(note(.15)))
+    .lpf(sine.range(180, 900).slow(4))
+    .lpq(6)
+    .gain(.55),
+
+  // Pad atmosférico
+  chord("<Dm9 Bbmaj7 Gm9 A7sus4>")
+    .voicing()
+    .s("sawtooth")
+    .attack(.4).release(1.5)
+    .lpf(1400)
+    .gain(.12)
+    .room(.8).size(.9)
+)
+-->
+  </strudel-editor>
+</body>
+</html>

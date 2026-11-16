@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Pulso · Tests de audio</title>
+  <style>
+    :root { --bg: #0c0d12; --text: #dfe3ee; --ok: #39e1b4; --bad: #ff5c5c; --dim: #8a90a6; }
+    body { background: var(--bg); color: var(--text); font: 13px/1.45 Consolas, monospace; margin: 0; padding: 16px; }
+    h1 { font: 600 18px system-ui, sans-serif; margin: 0 0 4px; }
+    #summary { font-size: 15px; margin: 8px 0 14px; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border-bottom: 1px solid #222634; padding: 3px 8px; text-align: left; vertical-align: top; }
+    th { color: var(--dim); font-weight: 400; }
+    .ok { color: var(--ok); } .bad { color: var(--bad); }
+    button { font: inherit; padding: 6px 12px; background: #1b1e29; color: var(--text); border: 1px solid #2a2e3d; border-radius: 6px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Pulso · tests de audio (render offline)</h1>
+  <div id="summary">Ejecutando…</div>
+  <p><button id="live">Test en vivo (necesita clic: reproduce 4 s)</button></p>
+  <table><thead><tr><th>#</th><th>test</th><th>resultado</th><th>detalle</th></tr></thead><tbody id="rows"></tbody></table>
+  <script type="module">
+    import { Engine } from '../src/audio/engine.js';
+    import { buildKit, KIT } from '../src/audio/drums.js';
+    import { SYNTHS } from '../src/audio/params.js';
+    import { encodeWav, analyzeChannels } from '../src/audio/wav.js';
+    import { generateTrack, GEN_STYLES } from '../src/gen/generator.js';
+    let TRACKS = [];
+    try {
+      ({ TRACKS } = await import('../tracks/index.js'));
+    } catch (e) {
+      window.__done = { pass: 0, total: 1, failed: [{ name: 'import tracks/index.js', detail: e.message }] };
+      throw e;
+    }
+    import { evaluate } from '../src/core/eval.js';
+
+    const rows = document.getElementById('rows');
+    const results = [];
+    window.__results = results;
+    let idx = 0;
+    function report(name, ok, detail) {
+      results.push({ name, ok, detail });
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${++idx}</td><td></td><td class="${ok ? 'ok' : 'bad'}">${ok ? 'OK' : 'FALLO'}</td><td></td>`;
+      tr.children[1].textContent = name;
+      tr.children[3].textContent = detail;
+      rows.appendChild(tr);
+      const pass = results.filter((r) => r.ok).length;
+      document.getElementById('summary').innerHTML = `<b class="${pass === results.length ? 'ok' : 'bad'}">${pass}/${results.length} OK</b>`;
+    }
+    async function check(name, fn) {
+      try {
+        const detail = await fn();
+        report(name, true, detail || '');
+      } catch (e) {
+        report(name, false, e.message);
+      }
+    }
+    const fmt = (st) => `pico ${st.peakDb.toFixed(1)} dB · RMS ${st.rmsDb.toFixed(1)} dB · ${st.seconds.toFixed(1)} s`;
+    function assertAudio(st, { minRms = -60, maxPeakDb = 0, maxRms = -3 } = {}) {
+      if (st.nan > 0) throw new Error(`${st.nan} muestras NaN`);
+      if (!(st.rmsDb > minRms)) throw new Error(`silencio o casi (RMS ${st.rmsDb.toFixed(1)} dB)`);
+      if (st.peakDb > maxPeakDb) throw new Error(`pico ${st.peakDb.toFixed(2)} dB > ${maxPeakDb}`);
+      if (st.rmsDb > maxRms) throw new Error(`demasiado fuerte RMS ${st.rmsDb.toFixed(1)} dB`);
+      if (Math.abs(st.dc) > 0.02) throw new Error(`DC ${st.dc.toFixed(3)}`);
+    }
+
+    const engine = new Engine();
+    const t0 = performance.now();
+
+    // 1) kit sintetizado
+    let kit;
+    await check('kit: se renderizan todos los sonidos', async () => {
+      kit = await buildKit(44100);
+      let n = 0;
+      for (const [name, list] of kit) {
+        for (const [i, b] of list.entries()) {
+          const st = analyzeChannels([b.getChannelData(0)], b.sampleRate);
+          if (st.nan) throw new Error(`${name}:${i} NaN`);
+          if (st.peak < 0.01) throw new Error(`${name}:${i} silencioso`);
+          if (st.peak > 1.6) throw new Error(`${name}:${i} pico ${st.peak.toFixed(2)}`);
+          n++;
+        }
+      }
+      return `${n} buffers (${kit.size} nombres)`;
+    });
+    await check('kit: breaks miden exactamente un compás a 170 BPM', async () => {
+      const b = kit.get('brk');
+      for (const x of b) if (Math.abs(x.duration - (60 / 170) * 4) > 0.001) throw new Error(`dura ${x.duration}`);
+      return `${b.length} breaks de ${b[0].duration.toFixed(3)} s`;
+    });
+
+    await engine.init();
+
+    // 2) cada synth
+    for (const synth of SYNTHS) {
+      await check(`synth ${synth}`, async () => {
+        const { stats } = await engine.render(`bpm(120)\nx: note("a2 e3").s("${synth}").clip(.9)`, { cycles: 1, tail: 0.5 });
+        assertAudio(stats, { minRms: -45 });
+        return fmt(stats);
+      });
+    }
+
+    // 3) cada sonido del kit
+    for (const name of Object.keys(KIT).concat(['brk'])) {
+      await check(`sample ${name}`, async () => {
+        const secs = KIT[name] ? KIT[name][0] : 1.5;
+        const { stats } = await engine.render(`bpm(120)\nx: s("${name}*2").n("<0 1 2>")`, { cycles: 1, tail: Math.max(0.5, secs) });
+        assertAudio(stats, { minRms: -50 });
+        return fmt(stats);
+      });
+    }
+
+    // 4) efectos y parámetros
+    const fx = {
+      'filtro + envolvente': 'note("c2*4").s("saw").lpf(300).lpq(10).lpenv(3).lpdecay(.1)',
+      'wobble sincronizado': 'note("c2").s("reese").wob(4).wobdepth(3).clip(1)',
+      'distorsión / shape / crush': 'note("c2*4").s("sine").distort(3).shape(.5).crush(6)',
+      'hpf / bpf': 's("brk").splice(8, run(8)).hpf(2000).bpf(4000).bpq(3)',
+      'reverb (4 tamaños)': 's("cp*4").room(1).size("<0 .3 .6 1>")',
+      'delay sincronizado': 's("rim").delay(.8).delayfeedback(.7)',
+      'vibrato + fm': 'note("a3").s("fm").fm(5).fmh(1.5).fmdecay(.3).vib(6).vibmod(.5).clip(1)',
+      'supersaw unison/spread/detune': 'note("a3").s("supersaw").unison(9).spread(1).detune(.6)',
+      'subosc': 'note("a2").s("saw").subosc(1)',
+      'reverse / speed / accelerate': 's("brk").speed("-1 2 .5").accelerate(.5)',
+      'begin/end/fit/chop/loopAt': 's("brk").loopAt(2).chop(16)',
+      'grupos de corte': 's("oh hh oh hh").cut(1)',
+      'pan + jux': 's("hh*8").jux(x => x.rev())',
+      'acordes + arpegio': 'chord("<Dm9 Bb^7>").arp("updown").s("pluck")',
+      'vocales (formantes)': 'note("c3*4").s("saw").vowel("<a e i o u>").clip(.9)',
+      'coarse (AudioWorklet)': 'note("c3*4").s("saw").coarse("<1 4 8 16>").clip(.9)',
+      'phaser': 'note("c3").s("supersaw").phaser(2).phaserdepth(.8).clip(1)',
+      'noise mezclado': 'note("c3*2").s("sine").noise(.5).clip(.9)',
+      'filtro 24 dB y envolventes hpf/bpf': 'note("c2*4").s("saw").lpf(400).ftype("24db").lpenv(3).hpf(80).hpenv(2).bpf(1200).bpenv(1)',
+      'FM con envolvente': 'note("a2*4").s("fm").fm(6).fmattack(.02).fmdecay(.2).fmsustain(.2).fmenv("exp")',
+      'compuestos de Strudel': 's("bd*4").lpf("800:8").room(".5:.3").delay(".4:.125:.5")',
+      'ADSR en samples': 's("oh*4").decay(.05)',
+      'sd, tb y misc': 's("bd sd tb misc")',
+      'envolvente de tono (kick sintético / zap)': 'note("c2*4").s("sine").penv(36).pdecay(.04).decay(.3)',
+      'adsr compacto': 'note("e3 g3").s("square").adsr(".05:.1:.4:.3")',
+      'notas extremas no rompen': 'note("-40 0 127 300").s("saw")',
+      'valores basura no rompen': 's("bd sn").gain("NaN").lpf(-5).room(9).speed(0)',
+    };
+    for (const [name, pat] of Object.entries(fx)) {
+      await check(`fx: ${name}`, async () => {
+        const { stats } = await engine.render(`bpm(150)\nx: ${pat}`, { cycles: 2, tail: 1 });
+        assertAudio(stats, { minRms: name.includes('basura') ? -90 : -50 });
+        return fmt(stats);
+      });
+    }
+
+    // 5) sidechain: el bajo debe bajar cuando entra el kick
+    await check('sidechain duck agacha la pista destino justo tras cada golpe', async () => {
+      const base = 'bpm(120)\nbass: note("c2").s("sub").clip(1)\n';
+      const a = await engine.render(base + 'kick: s("bd*4").gain(0)', { cycles: 2, tail: 0 });
+      const b = await engine.render(base + 'kick: s("bd*4").gain(0).duck("bass").duckdepth(.9)', { cycles: 2, tail: 0 });
+      // Curva del sidechain medida en ventanas de 5 ms tras cada golpe (kicks cada 0.5 s, render con 50 ms de adelanto).
+      // El compresor y el limitador del master añaden ~12 ms de lookahead a toda la salida, por eso se mide la curva entera.
+      const sr = a.buffer.sampleRate;
+      const A = a.buffer.getChannelData(0);
+      const B = b.buffer.getChannelData(0);
+      const win = (d, t0) => {
+        let s = 0;
+        let n = 0;
+        for (let i = Math.floor(t0 * sr); i < Math.floor((t0 + 0.005) * sr); i++) {
+          s += d[i] * d[i];
+          n++;
+        }
+        return Math.sqrt(s / n);
+      };
+      let worstDip = 0;
+      let worstRecovery = 1;
+      let latestDip = 0;
+      for (let k = 1; k < 8; k++) {
+        const t = 0.05 + k * 0.5;
+        const curve = [];
+        for (let ms = 0; ms < 300; ms += 5) curve.push(win(B, t + ms / 1000) / win(A, t + ms / 1000));
+        const minIdx = curve.indexOf(Math.min(...curve));
+        worstDip = Math.max(worstDip, curve[minIdx]);
+        latestDip = Math.max(latestDip, minIdx * 5);
+        worstRecovery = Math.min(worstRecovery, ...curve.slice(250 / 5));
+      }
+      if (!(worstDip < 0.25)) throw new Error(`dip insuficiente (mínimo ${(worstDip * 100).toFixed(0)}% del nivel)`);
+      if (!(latestDip <= 60)) throw new Error(`el dip llega tarde (${latestDip} ms)`);
+      if (!(worstRecovery > 0.9)) throw new Error(`no se recupera (${(worstRecovery * 100).toFixed(0)}% a los 250 ms)`);
+      return `dip hasta ${(worstDip * 100).toFixed(0)}% en ≤${latestDip} ms · recuperado ≥${(worstRecovery * 100).toFixed(0)}% a los 250 ms`;
+    });
+
+    await check('duckorbit numérico agacha las pistas de esa orbit', async () => {
+      const base = 'bpm(120)\nbass: note("c2").s("sub").clip(1).orbit(2)\n';
+      const a = await engine.render(base + 'kick: s("bd*4").gain(0)', { cycles: 2, tail: 0 });
+      const b = await engine.render(base + 'kick: s("bd*4").gain(0).duckorbit(2).duckdepth(.9)', { cycles: 2, tail: 0 });
+      const ratio = b.stats.rms / a.stats.rms;
+      if (!(ratio < 0.95)) throw new Error(`sin efecto (${ratio.toFixed(2)})`);
+      return `RMS ${(ratio * 100).toFixed(0)}% del original`;
+    });
+
+    await check('delay con feedback máximo se apaga (no se autooscila)', async () => {
+      const { buffer } = await engine.render('bpm(120)\nx: s("rim ~ ~ ~").delay(.9).delayfeedback(.99).mask("<1 0 0 0 0 0 0 0>")', { cycles: 8, tail: 1 });
+      const d = buffer.getChannelData(0);
+      const sr = buffer.sampleRate;
+      const win = (t) => {
+        let s = 0;
+        const a = Math.floor(t * sr);
+        const b = Math.min(d.length, a + Math.floor(0.5 * sr));
+        for (let i = a; i < b; i++) s += d[i] * d[i];
+        return Math.sqrt(s / Math.max(1, b - a));
+      };
+      const early = win(0.3);
+      const late = win(15.5);
+      if (!(late < early * 0.1)) throw new Error(`la cola no decae (${(late / early).toFixed(2)})`);
+      return `cola a los 15 s = ${((late / early) * 100).toFixed(2)}% del nivel inicial`;
+    });
+
+    await check('grupo de corte: golpes simultáneos no producen un pico', async () => {
+      const a = await engine.render('bpm(120)\nx: s("[hh,oh]*4").cut(1)', { cycles: 1, tail: 0.5 });
+      const b = await engine.render('bpm(120)\nx: s("oh*4").cut(1)', { cycles: 1, tail: 0.5 });
+      if (a.stats.peak > b.stats.peak * 1.6 + 0.05) throw new Error(`pico ${a.stats.peak.toFixed(2)} vs ${b.stats.peak.toFixed(2)}`);
+      return `pico ${a.stats.peakDb.toFixed(1)} dB (solo oh: ${b.stats.peakDb.toFixed(1)} dB)`;
+    });
+
+    await check('ADSR en samples acorta el sonido', async () => {
+      const longR = await engine.render('bpm(60)\nx: s("oh")', { cycles: 1, tail: 0 });
+      const shortR = await engine.render('bpm(60)\nx: s("oh").decay(.03)', { cycles: 1, tail: 0 });
+      const energyAfter = (buf, t) => {
+        const d = buf.getChannelData(0);
+        let s = 0;
+        for (let i = Math.floor(t * buf.sampleRate); i < d.length; i++) s += d[i] * d[i];
+        return s;
+      };
+      const ratio = energyAfter(shortR.buffer, 0.15) / Math.max(1e-12, energyAfter(longR.buffer, 0.15));
+      if (!(ratio < 0.05)) throw new Error(`no se acorta (${ratio.toFixed(3)})`);
+      return `energía tras 150 ms: ${(ratio * 100).toFixed(2)}% de la versión sin decay`;
+    });
+
+    await check('export respeta el mezclador (mute/solo/volumen)', async () => {
+      const code = 'bpm(120)\na: s("bd*4")\nb: s("hh*8")';
+      const full = await engine.render(code, { cycles: 1, tail: 0 });
+      const onlyB = await engine.render(code, { cycles: 1, tail: 0, audible: (n) => n === 'b' });
+      const quiet = await engine.render(code, { cycles: 1, tail: 0, volumes: { a: 0.1, b: 0.1 } });
+      if (!(onlyB.stats.rms < full.stats.rms * 0.8)) throw new Error('el mute no se aplicó');
+      if (!(quiet.stats.rms < full.stats.rms * 0.5)) throw new Error('el volumen no se aplicó');
+      return `completo ${full.stats.rmsDb.toFixed(1)} dB · sólo "b" ${onlyB.stats.rmsDb.toFixed(1)} dB · faders bajos ${quiet.stats.rmsDb.toFixed(1)} dB`;
+    });
+
+    // 6) master: el limitador + clipper nunca deja pasar de 0 dBFS
+    await check('master nunca satura aunque el código pida ganancia extrema', async () => {
+      const { stats } = await engine.render('bpm(174)\na: s("bd*16").gain(4).postgain(8)\nb: note("c2*8").s("supersaw").gain(4)', { cycles: 4, tail: 1 });
+      assertAudio(stats, { maxPeakDb: -0.05, maxRms: 0 });
+      return fmt(stats);
+    });
+
+    // 7) WAV ida y vuelta
+    await check('WAV: decodifica igual que el original', async () => {
+      const { buffer, wav } = await engine.render('bpm(174)\nx: s("bd sn hh cp")', { cycles: 1, tail: 0.2 });
+      // decodificar a la misma frecuencia de muestreo para comparar muestra a muestra
+      const dec = await new OfflineAudioContext(2, 1, buffer.sampleRate).decodeAudioData(wav().slice(0));
+      if (dec.length !== buffer.length) throw new Error(`longitud ${dec.length} vs ${buffer.length}`);
+      let maxErr = 0;
+      for (let ch = 0; ch < 2; ch++) {
+        const a = buffer.getChannelData(ch);
+        const b = dec.getChannelData(ch);
+        for (let i = 0; i < a.length; i++) maxErr = Math.max(maxErr, Math.abs(Math.max(-1, Math.min(1, a[i])) - b[i]));
+      }
+      if (maxErr > 1.5 / 32768) throw new Error(`error ${maxErr}`);
+      return `${dec.length} muestras × 2 canales, error máx ${(maxErr * 32768).toFixed(2)} LSB`;
+    });
+
+    // 8) todos los temas: intro y primer drop
+    for (const t of TRACKS) {
+      await check(`tema ${t.title}`, async () => {
+        const res = await evaluate(t.code);
+        const drop = res.form.sections.find((s) => /drop|main|roll|flow/.test(s.name));
+        const from = res.form.startOf(drop.name);
+        const r1 = await engine.render(t.code, { cycles: 8, from, tail: 1.5 });
+        assertAudio(r1.stats, { minRms: -30, maxPeakDb: -0.05, maxRms: -5 });
+        const r2 = await engine.render(t.code, { cycles: 4, from: 0, tail: 1 });
+        assertAudio(r2.stats, { minRms: -50, maxPeakDb: -0.05 });
+        return `drop: ${fmt(r1.stats)} · intro: RMS ${r2.stats.rmsDb.toFixed(1)} dB · ${r1.stats.events} eventos`;
+      });
+    }
+
+    // 9) temas generados
+    for (const style of Object.keys(GEN_STYLES)) {
+      for (const seed of [1, 777]) {
+        await check(`generado ${style} #${seed}`, async () => {
+          const g = generateTrack({ style, seed });
+          const res = await evaluate(g.code);
+          const from = res.form.startOf('drop');
+          const r = await engine.render(g.code, { cycles: 8, from, tail: 1.5 });
+          assertAudio(r.stats, { minRms: -30, maxPeakDb: -0.05, maxRms: -5 });
+          return `${g.title}: ${fmt(r.stats)}`;
+        });
+      }
+    }
+
+    // 9b) regresiones de la segunda revisión (motor y export)
+    await check('export "tema completo" desde una sección llega hasta el final', async () => {
+      const code = 'bpm(120)\nconst F = form("a:4 b:4 c:4")\nx: F({ a: s("bd*4"), b: s("sn*4"), c: s("hh*8") })';
+      const r = await engine.render(code, { cycles: 'song', from: 4, tail: 0 });
+      if (r.stats.cycles !== 8) throw new Error(`${r.stats.cycles} compases (esperaba 8)`);
+      const expect = 8 / (120 / 240);
+      if (Math.abs(r.stats.seconds - expect) > 0.1) throw new Error(`dura ${r.stats.seconds.toFixed(2)} s (esperaba ${expect})`);
+      const whole = await engine.render(code, { cycles: 'song', tail: 0 });
+      if (whole.stats.cycles !== 12) throw new Error(`desde el inicio: ${whole.stats.cycles} compases`);
+      return `desde c5: ${r.stats.cycles} compases (${r.stats.seconds.toFixed(1)} s) · desde el inicio: ${whole.stats.cycles}`;
+    });
+
+    await check('export: una pista en M no hace sidechain (como en directo)', async () => {
+      const code = 'bpm(120)\nkick: s("bd*4").duck("pad").duckdepth(1).duckattack(.4)\npad: note("c3").s("sine")';
+      const ducked = await engine.render(code, { cycles: 2, tail: 0, onlyTracks: ['pad'] });
+      const free = await engine.render(code, { cycles: 2, tail: 0, onlyTracks: ['pad'], muted: (n) => n === 'kick' });
+      const none = await engine.render('bpm(120)\npad: note("c3").s("sine")', { cycles: 2, tail: 0 });
+      // con el kick en M el pad suena exactamente como si el kick no existiera
+      if (Math.abs(free.stats.rmsDb - none.stats.rmsDb) > 0.1) {
+        throw new Error(`con M el pad sigue bajando (${free.stats.rmsDb.toFixed(2)} vs ${none.stats.rmsDb.toFixed(2)} dB sin kick)`);
+      }
+      if (!(ducked.stats.rmsDb < free.stats.rmsDb - 1)) throw new Error(`el sidechain no se nota (${ducked.stats.rmsDb.toFixed(1)} dB)`);
+      const unmuted = await engine.render('bpm(120)\n_kick: s("bd*4")\npad: note("c3").s("sine")', { cycles: 1, tail: 0, muted: () => false });
+      if (!unmuted.stats.tracks.includes('kick')) throw new Error('una pista _muda que quitaste del mute no se exporta');
+      return `pad con sidechain ${ducked.stats.rmsDb.toFixed(1)} dB · con el kick en M ${free.stats.rmsDb.toFixed(1)} dB`;
+    });
+
+    await check('stems: sin compresor/limitador en el master', async () => {
+      const code = 'bpm(174)\nfuerte: note("c2*8").s("supersaw").gain(4).postgain(8)\nhh: s("hh*8")';
+      const mix = await engine.render(code, { cycles: 2, tail: 0.2 });
+      const stems = await engine.renderStems(code, { cycles: 2, tail: 0.2 });
+      const st = stems.find((x) => x.name === 'fuerte');
+      if (!st || stems.length !== 2) throw new Error(`stems: ${stems.map((x) => x.name)}`);
+      if (!(mix.stats.peakDb <= -0.05)) throw new Error(`la mezcla satura (${mix.stats.peakDb.toFixed(2)} dB)`);
+      if (!(st.stats.peakDb > mix.stats.peakDb + 1)) throw new Error(`el stem parece limitado (${st.stats.peakDb.toFixed(2)} dB)`);
+      // el stem va en WAV float de 32 bits (no recorta) y avisa de que pasa de 0 dBFS
+      const v = new DataView(st.wav());
+      if (v.getUint16(20, true) !== 3 || v.getUint16(34, true) !== 32) throw new Error('el stem no es WAV float de 32 bits');
+      if (!st.warnings.some((w) => /pasa de 0 dBFS/.test(w))) throw new Error(`sin aviso de pico: ${JSON.stringify(st.warnings)}`);
+      // y el WAV float se decodifica con los picos intactos
+      const dec = await new OfflineAudioContext(2, 1, st.buffer.sampleRate).decodeAudioData(st.wav());
+      let decPeak = 0;
+      for (const x of dec.getChannelData(0)) decPeak = Math.max(decPeak, Math.abs(x));
+      if (!(decPeak > 1)) throw new Error(`el WAV float recortó (${decPeak.toFixed(3)})`);
+      const mixWav = new DataView(mix.wav());
+      if (mixWav.getUint16(20, true) !== 1) throw new Error('la mezcla debería seguir en PCM de 16 bits');
+      return `mezcla ${mix.stats.peakDb.toFixed(1)} dB (limitada, 16 bits) · stem ${st.stats.peakDb.toFixed(1)} dB (sin master, float: pico decodificado ${decPeak.toFixed(2)})`;
+    });
+
+    await check('MIDI por .midiport(): sin aviso falso de sonido desconocido', async () => {
+      const r = await engine.evaluate('bpm(174)\nkeys: note("c3 e3").s("piano").midiport("IAC")\nmas: note("c3").s("piano").midi("IAC")');
+      if (r.warnings.some((w) => /Sonido desconocido/.test(w))) throw new Error(JSON.stringify(r.warnings));
+      const r2 = await engine.evaluate('bpm(174)\nx: note("c3").s("pianoX")');
+      if (!r2.warnings.some((w) => /Sonido desconocido: "pianoX"/.test(w))) throw new Error('el aviso normal desapareció');
+      return 'midiport y midi: sin aviso · sonido realmente desconocido: avisado';
+    });
+
+    await check('orbits conocidos al evaluar (duckorbit desde el primer golpe)', async () => {
+      await engine.evaluate('bpm(174)\nk: s("bd*4").duckorbit(2)\nbass: note("~ c2").s("sub").orbit(2)');
+      const set = engine.mixer.orbits.get(2);
+      if (!set || !set.has('bass')) throw new Error(`orbit 2 → ${set ? [...set] : 'nada'}`);
+      return `orbit 2 → ${[...set].join(', ')} (sin haber sonado todavía)`;
+    });
+
+    await check('distortvol / shapevol: volumen tras saturar', async () => {
+      const r = (c) => engine.render(`bpm(174)\nx: note("c3*4").s("saw")${c}`, { cycles: 1, tail: 0 });
+      const [a, b, c, d] = await Promise.all([r('.distort(8)'), r('.distort("8:.25")'), r('.shape(.7)'), r('.shape(".7:.25")')]);
+      if (!(a.stats.rmsDb - b.stats.rmsDb > 6)) throw new Error(`distortvol: sólo ${(a.stats.rmsDb - b.stats.rmsDb).toFixed(1)} dB menos`);
+      if (!(c.stats.rmsDb - d.stats.rmsDb > 6)) throw new Error(`shapevol: sólo ${(c.stats.rmsDb - d.stats.rmsDb).toFixed(1)} dB menos`);
+      return `distort 8 → ${a.stats.rmsDb.toFixed(1)} dB · "8:.25" → ${b.stats.rmsDb.toFixed(1)} dB · shape .7 → ${c.stats.rmsDb.toFixed(1)} · ".7:.25" → ${d.stats.rmsDb.toFixed(1)}`;
+    });
+
+    await check('grupos de corte sin cancelAndHoldAtTime (Firefox) suenan igual', async () => {
+      // el primer platillo está a mitad de su caída cuando el segundo lo corta
+      const code = 'bpm(240)\nx: s("cr cr").cut(1).decay(1).sustain(0)';
+      const native = await engine.render(code, { cycles: 1, tail: 0.3 });
+      const proto = AudioParam.prototype;
+      const desc = Object.getOwnPropertyDescriptor(proto, 'cancelAndHoldAtTime');
+      if (!desc) return 'este navegador no tiene cancelAndHoldAtTime: siempre se usa el cálculo propio';
+      delete proto.cancelAndHoldAtTime;
+      let fallback;
+      try {
+        fallback = await engine.render(code, { cycles: 1, tail: 0.3 });
+      } finally {
+        Object.defineProperty(proto, 'cancelAndHoldAtTime', desc);
+      }
+      const a = native.buffer.getChannelData(0);
+      const b = fallback.buffer.getChannelData(0);
+      let maxDiff = 0;
+      for (let i = 0; i < a.length; i++) maxDiff = Math.max(maxDiff, Math.abs(a[i] - b[i]));
+      const peak = Math.max(1e-9, native.stats.peak);
+      if (!(maxDiff < peak * 0.02)) throw new Error(`difiere ${((maxDiff / peak) * 100).toFixed(1)}% del pico`);
+      return `diferencia máx ${((maxDiff / peak) * 100).toFixed(3)}% del pico`;
+    });
+
+    await check('export: los samples que no cargan salen como aviso', async () => {
+      const r = await engine.render('samples({ roto: ["http://127.0.0.1:9/no.wav"] })\nd: s("roto*4")\nk: s("bd*4")', { cycles: 1, tail: 0 });
+      if (!r.warnings.some((w) => /No se pudo cargar el sample "roto"/.test(w))) throw new Error(`avisos: ${JSON.stringify(r.warnings)}`);
+      return r.warnings[0];
+    });
+
+    // 10) tema completo de principio a fin
+    await check('render del tema completo (Lluvia de Neón, 64 compases)', async () => {
+      const a = performance.now();
+      const { stats } = await engine.render(TRACKS[0].code, { cycles: 'song' });
+      assertAudio(stats, { minRms: -30, maxPeakDb: -0.05 });
+      const secs = (performance.now() - a) / 1000;
+      return `${fmt(stats)} · renderizado en ${secs.toFixed(1)} s (${(stats.seconds / secs).toFixed(1)}× tiempo real)`;
+    });
+
+    const total = ((performance.now() - t0) / 1000).toFixed(1);
+    const pass = results.filter((r) => r.ok).length;
+    document.getElementById('summary').innerHTML += ` · terminado en ${total} s`;
+    window.__done = { pass, total: results.length, failed: results.filter((r) => !r.ok) };
+
+    // test en vivo (requiere gesto del usuario por la política de autoplay)
+    document.getElementById('live').onclick = async () => {
+      await check('en vivo: evaluar, tocar 4 s y parar', async () => {
+        const errors = [];
+        engine.onError = (e) => errors.push(e.message);
+        const res = await engine.evaluate(TRACKS[1].code);
+        await engine.play();
+        await new Promise((r) => setTimeout(r, 2000));
+        await engine.evaluate(TRACKS[7].code);
+        await new Promise((r) => setTimeout(r, 2000));
+        const st = engine.scheduler.stats;
+        engine.stop();
+        if (errors.length) throw new Error(errors.join('; '));
+        if (st.events < 20) throw new Error(`pocos eventos: ${st.events}`);
+        return `${res.tracks.length} pistas · ${st.events} eventos · ${st.ticks} ticks · saltos ${st.skips} · contexto ${engine.ctx.state}, latencia base ${(engine.ctx.baseLatency * 1000).toFixed(0)} ms`;
+      });
+      window.__live = results.at(-1);
+    };
+  </script>
+</body>
+</html>

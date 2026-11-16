@@ -1,0 +1,11 @@
+# Sesión compartida: estado en tiempo real del estudio (sesion.js, estado.json).
+# El servidor crea la carpeta al arrancar; cada máquina tiene la suya.
+live/
+
+# Archivos locales de herramientas y del sistema
+.claude/settings.local.json
+node_modules/
+*.tmp
+.DS_Store
+Thumbs.db
+desktop.ini

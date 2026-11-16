@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Pulso · Estudio DnB</title>
+  <link rel="stylesheet" href="src/ui/style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">PULSO<span>dnb live coding</span></div>
+    <div class="transport">
+      <button id="btnPlay" class="primary" title="Evaluar y tocar (Ctrl+Enter)">▶ Tocar</button>
+      <button id="btnStop" title="Parar (Ctrl+.)">■ Parar</button>
+      <select id="fromSection" title="Empezar desde esta sección"><option value="">Desde el inicio</option></select>
+      <label class="check small" title="Repetir sólo la sección elegida"><input id="loopOn" type="checkbox" /> bucle</label>
+    </div>
+    <div class="readout">
+      <div><label>BPM</label><b id="bpm">174</b></div>
+      <div><label>Compás</label><b id="bar">0</b></div>
+      <div><label>Sección</label><b id="section">—</b></div>
+      <div><label>Voces</label><b id="voices">0</b></div>
+    </div>
+    <canvas id="meter" width="160" height="28" title="Nivel master"></canvas>
+    <div class="export">
+      <select id="renderLen" title="Duración del render">
+        <option value="song">Tema completo</option>
+        <option value="8">8 compases</option>
+        <option value="16">16 compases</option>
+        <option value="32">32 compases</option>
+      </select>
+      <button id="btnRender" title="Renderizar a WAV lo que suena en el mezclador (mute/solo/volúmenes)">⤓ WAV</button>
+      <button id="btnStems" title="Un WAV por pista (stems)">⤓ Stems</button>
+      <button id="btnShare" title="Copiar enlace con el código">🔗</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="side">
+      <nav class="tabs" id="tabs">
+        <button data-tab="lib" class="on">Temas</button>
+        <button data-tab="gen">Generador</button>
+        <button data-tab="mine">Mis temas</button>
+        <button data-tab="smp">Samples</button>
+        <button data-tab="ses">Sesión</button>
+        <button data-tab="help">Ayuda</button>
+      </nav>
+      <section class="panel on" id="tab-lib"></section>
+      <section class="panel" id="tab-gen">
+        <label>Estilo <select id="genStyle"></select></label>
+        <label>Semilla <span class="row"><input id="genSeed" type="number" value="1" min="1" /><button id="genDice" title="Semilla aleatoria">🎲</button></span></label>
+        <button id="genGo" class="primary wide">Generar tema</button>
+        <button id="genBatch" class="wide">Generar 12 ideas</button>
+        <div id="genList" class="list"></div>
+      </section>
+      <section class="panel" id="tab-mine">
+        <span class="row"><input id="saveName" placeholder="Nombre del tema" /><button id="btnSave" title="Guardar (Ctrl+S)">Guardar</button></span>
+        <span class="row"><button id="btnExport" class="wide">Exportar .js</button><label class="file wide">Importar<input id="fileImport" type="file" accept=".js,.txt" /></label></span>
+        <p class="hint">Guardar en la biblioteca escribe el tema en <code>tracks/</code> (en disco) y aparece en la pestaña Temas.</p>
+        <span class="row"><select id="libStyle"></select><button id="btnLibrary">Guardar en biblioteca</button></span>
+        <div id="mineList" class="list"></div>
+      </section>
+      <section class="panel" id="tab-smp">
+        <p class="hint">Pulso trae batería, breaks y FX sintetizados (sin internet). También puedes añadir tus samples:</p>
+        <label class="file wide">Cargar carpeta de samples<input id="smpDir" type="file" webkitdirectory multiple /></label>
+        <span class="row"><input id="smpRepo" value="github:tidalcycles/dirt-samples" /><button id="smpLoad">Cargar</button></span>
+        <div id="smpList" class="list small"></div>
+      </section>
+      <section class="panel" id="tab-ses">
+        <p class="hint">Sesión compartida con Claude: tu código se guarda en <code>live/sesion.js</code> cada vez que tocas (Ctrl+Enter), y cuando Claude edita ese archivo el estudio lo recarga en vivo sin parar la música.</p>
+        <label class="check"><input id="sesOn" type="checkbox" /> Enlazar con <code>live/sesion.js</code></label>
+        <div id="sesState" class="hint">Desconectado.</div>
+        <span class="row"><button id="sesPull" class="wide">Cargar sesión</button><button id="sesPush" class="wide">Enviar mi código</button></span>
+        <div id="sesLog" class="list small"></div>
+      </section>
+      <section class="panel" id="tab-help"></section>
+    </aside>
+
+    <section class="center">
+      <div id="banner" class="banner" hidden>
+        <span id="bannerText">Claude actualizó la sesión.</span>
+        <button id="bannerLoad" class="primary">Cargar</button>
+        <button id="bannerKeep">Mantener lo mío</button>
+      </div>
+      <div class="editor">
+        <pre id="gutter" aria-hidden="true"></pre>
+        <textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+      </div>
+      <div id="status" class="status">Listo. Ctrl+Enter para tocar · Ctrl+. para parar · Ctrl+S para guardar</div>
+    </section>
+
+    <aside class="right">
+      <div class="block">
+        <h3>Mezclador</h3>
+        <div id="mixer" class="mixer"></div>
+      </div>
+      <div class="block grow">
+        <h3>Piano roll</h3>
+        <canvas id="roll"></canvas>
+      </div>
+      <div class="block">
+        <h3>Espectro</h3>
+        <canvas id="spectrum" height="90"></canvas>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module" src="src/ui/app.js"></script>
+</body>
+</html>
