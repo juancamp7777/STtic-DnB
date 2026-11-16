@@ -44,6 +44,42 @@ test('beat: con patrones da lo mismo que sin ellos (un golpe por paso con el val
   }
 });
 
+// ---------------- Fibonacci ----------------
+test('fib(): sucesión de Fibonacci como patrón, con módulo (periodo de Pisano) y argumentos patrón', async () => {
+  const vals = (p, b = 0, e = 1) => p.onsets(b, e).map((h) => h.value);
+  assert.deepEqual(vals(P.fib(8)), [0, 1, 1, 2, 3, 5, 8, 13]);
+  assert.deepEqual(vals(P.fib(16, 7)), [0, 1, 1, 2, 3, 5, 1, 6, 0, 6, 6, 5, 4, 2, 6, 1]);
+  // módulo 7 la sucesión se repite exactamente cada 16 números (periodo de Pisano de 7)
+  const l = P.fibonacciList(48, 7);
+  assert.deepEqual(l.slice(16, 32), l.slice(0, 16));
+  assert.deepEqual(l.slice(32, 48), l.slice(0, 16));
+  // sin módulo, 79 números exactos: F(0)...F(78) = 8944394323791464 < 2^53; F(79) ya no cabe exacto
+  assert.equal(P.fibonacciList(79).at(-1), 8944394323791464);
+  assert.ok(P.fibonacciList(79).at(-1) < 2 ** 53);
+  assert.throws(() => P.fib(80), /como mucho 79/);
+  assert.throws(() => P.fib(8, Infinity), /entre 1 y 2\^52/);
+  assert.throws(() => P.fib(8, 2 ** 60), /entre 1 y 2\^52/);
+  // con un módulo grande sigue siendo exacto: se compara con la sucesión calculada en BigInt
+  const exact = [];
+  let fa = 0n;
+  let fb = 1n;
+  for (let i = 0; i < 100; i++) {
+    exact.push(Number(fa % 2n ** 52n));
+    [fa, fb] = [fb, fa + fb];
+  }
+  assert.deepEqual(P.fibonacciList(100, 2 ** 52), exact, 'módulo 2^52: exacto en los 100 términos');
+  assert.deepEqual(vals(P.fib('<4 8>'), 1, 2), [0, 1, 1, 2, 3, 5, 8, 13]);
+  assert.deepEqual(vals(P.fib(4, '<7 2>'), 1, 2), [0, 1, 1, 0]);
+  assert.throws(() => P.fib(0), /la longitud tiene que ser 1 o más/);
+  assert.throws(() => P.fib(8, 0), /el módulo tiene que ser un entero entre 1 y 2\^52/);
+  // como melodía: 16 semicorcheas en La menor
+  const notes = P.n(P.fib(16, 7)).scale('A4:minor').onsets(0, 1).map((h) => h.value.note);
+  assert.deepEqual(notes, [69, 71, 71, 72, 74, 77, 71, 79, 69, 79, 79, 77, 76, 72, 79, 71]);
+  assertSplitInvariant(P.n(P.fib(16, '<7 5>')).scale('A4:minor'), 6, Math.random, 'fib');
+  const r = await evaluate('k: n(fib(16, 7)).scale("A4:minor").s("pluck")\nb: s("brk:1").splice(8, fib(8, 8))');
+  assert.deepEqual(r.tracks.map((t) => t.pattern.onsets(0, 1).length), [16, 8]);
+});
+
 // ---------------- aleatorio ----------------
 test('undegradeBy como Strudel: deja pasar 1 - x; degradeBy(x) + undegradeBy(1 - x) se reparten sin repetir', () => {
   const p = s('hh*8');

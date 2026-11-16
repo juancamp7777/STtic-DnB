@@ -14,6 +14,13 @@ function setStatus(msg, kind = '') {
   statusEl.className = `status ${kind}`;
 }
 
+// ¿Hay servidor de Pulso (npm start)? Sin él (demo web estática) la sesión y la biblioteca en disco se desactivan.
+let hasServer = null;
+const serverReady = fetch('__tracks', { cache: 'no-store' })
+  .then((r) => r.ok && (r.headers.get('content-type') || '').includes('application/json'))
+  .catch(() => false)
+  .then((ok) => (hasServer = ok));
+
 // La biblioteca se importa de forma protegida: un tema roto no impide abrir el estudio.
 let TRACKS = [];
 let STYLE_NAMES = {};
@@ -379,8 +386,14 @@ requestAnimationFrame(draw);
 // Con el servidor de Pulso, los temas se descubren en tracks/ y se recargan solos al cambiar.
 let library = TRACKS;
 async function loadLibrary() {
+  if (!(await serverReady)) {
+    // demo web: la biblioteca es la de tracks/index.js
+    library = TRACKS;
+    renderLibrary();
+    return;
+  }
   try {
-    const r = await fetch('/__tracks', { cache: 'no-store' });
+    const r = await fetch('__tracks', { cache: 'no-store' });
     if (!r.ok) throw new Error('sin servidor');
     const list = await r.json();
     const broken = [];
@@ -550,7 +563,7 @@ async function saveToLibrary(overwrite = false, force = false) {
   if (force) params.set('force', '1');
   let r;
   try {
-    r = await fetch(`/__library?${params}`, { method: 'POST', body: codeEl.value });
+    r = await fetch(`__library?${params}`, { method: 'POST', body: codeEl.value });
   } catch (e) {
     return setStatus(`✖ No se pudo guardar en la biblioteca: ${e.message}. ¿Está corriendo "npm start"?`, 'err');
   }
@@ -755,7 +768,7 @@ function queueSession(job) {
   return run;
 }
 async function writeState() {
-  const r = await fetch('/__save?file=estado.json', {
+  const r = await fetch('__save?file=estado.json', {
     method: 'POST',
     body: JSON.stringify({ time: new Date().toISOString(), ...playState(), ...(ses.lastStatus || {}) }, null, 2),
   });
@@ -771,7 +784,7 @@ function pushSession(code, status, force = false, { state = true } = {}) {
       // se compara con lo que hay en DISCO (no con lo último en común): si el disco tiene otra versión
       // (p. ej. de Claude que decidiste no cargar), tu código se escribe igualmente
       if (code !== ses.disk || force) {
-        const r = await fetch(`/__save?file=${ses.file}`, { method: 'POST', body: code });
+        const r = await fetch(`__save?file=${ses.file}`, { method: 'POST', body: code });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         ses.disk = code;
         ses.dismissed = null; // el disco ya no tiene la versión descartada
@@ -817,7 +830,7 @@ function applySession(text, why) {
 }
 // Devuelve false si no hay archivo de sesión en disco.
 async function pullSession(reason) {
-  const r = await fetch(`/live/${ses.file}?t=${Date.now()}`, { cache: 'no-store' });
+  const r = await fetch(`live/${ses.file}?t=${Date.now()}`, { cache: 'no-store' });
   if (!r.ok) return false;
   const text = await r.text();
   ses.disk = text;
@@ -850,7 +863,7 @@ function connectSession() {
     sesState('Este navegador no soporta la sesión en vivo.', 'off');
     return;
   }
-  const es = new EventSource('/__events');
+  const es = new EventSource('__events');
   ses.es = es;
   // al conectar (y al reconectar) se mira si la sesión cambió mientras tanto
   es.onopen = async () => {
@@ -885,12 +898,13 @@ function connectSession() {
 }
 $('sesOn').checked = ses.on;
 $('sesOn').onchange = () => {
+  if (hasServer === false) return;
   ses.on = $('sesOn').checked;
   store.set('pulso.ses', ses.on);
   connectSession();
 };
 $('sesPull').onclick = async () => {
-  const r = await fetch(`/live/${ses.file}?t=${Date.now()}`, { cache: 'no-store' }).catch(() => null);
+  const r = await fetch(`live/${ses.file}?t=${Date.now()}`, { cache: 'no-store' }).catch(() => null);
   if (!r || !r.ok) return setStatus('No hay live/sesion.js todavía', 'warn');
   const text = await r.text();
   ses.disk = text;
@@ -907,7 +921,31 @@ $('bannerKeep').onclick = () => {
   ses.pending = null;
   sesLog('Mantuviste tu versión (se enviará al tocar)');
 };
-connectSession();
+
+// ---------------- demo web (sin servidor) ----------------
+// En una web estática (p. ej. GitHub Pages) no hay servidor de Pulso: la sesión compartida con Claude y
+// "Guardar en biblioteca" necesitan el servidor local (npm start). Tocar, generar, exportar, samples, MIDI y
+// la ayuda funcionan igual.
+const REPO_URL = 'https://github.com/juancamp7777/STtic-DnB';
+function enterDemoMode() {
+  ses.on = false; // no se guarda: al volver al estudio local la sesión sigue como estaba
+  $('sesOn').checked = false;
+  $('banner').hidden = true;
+  for (const id of ['sesOn', 'sesPull', 'sesPush', 'btnLibrary']) {
+    $(id).disabled = true;
+    $(id).title = 'Necesita el servidor local de Pulso (npm start)';
+  }
+  sesState('Demo web: la sesión compartida con Claude necesita el servidor local.', 'off');
+  const note = () => {
+    const p = document.createElement('p');
+    p.className = 'hint demo-note';
+    p.innerHTML = `Para componer en vivo con Claude y guardar temas en la biblioteca, descarga Pulso desde <a href="${REPO_URL}" target="_blank" rel="noopener">GitHub</a> y ejecuta <code>npm start</code> (sólo hace falta Node).`;
+    return p;
+  };
+  $('tab-ses').appendChild(note());
+  $('tab-mine').appendChild(note());
+}
+serverReady.then((ok) => (ok ? connectSession() : enterDemoMode()));
 
 // ---------------- pestañas / arranque ----------------
 $('tabs').onclick = (e) => {
@@ -923,8 +961,11 @@ loadLibrary();
 renderMine();
 
 // Enlace compartido: se carga una vez y se quita de la barra de direcciones.
+//   #code=...      código compartido con 🔗
+//   #tema=<id>     un tema de la biblioteca (p. ej. #tema=fibonacci): listo para pulsar ▶ Tocar
 // Tu código anterior se guarda en "Mis temas" para no perderlo.
 let initial = null;
+let initialTrack = null;
 if (location.hash.startsWith('#code=')) {
   try {
     initial = decodeCode(location.hash.slice(6));
@@ -932,12 +973,23 @@ if (location.hash.startsWith('#code=')) {
     initial = null;
   }
   history.replaceState(null, '', location.pathname + location.search);
+} else if (location.hash.startsWith('#tema=')) {
+  const id = decodeURIComponent(location.hash.slice(6));
+  initialTrack = TRACKS.find((t) => t.id === id) || null;
+  if (initialTrack) initial = initialTrack.code;
+  else startupWarnings.push(`⚠ No hay ningún tema "${id}" en la biblioteca.`);
+  history.replaceState(null, '', location.pathname + location.search);
 }
 const saved = store.get('pulso.code', null);
 if (initial !== null && saved && saved !== initial) saveMine(`Copia antes de abrir un enlace (${new Date().toLocaleString()})`, saved);
 const fallback = TRACKS[0] || generateTrack({ style: 'liquid', seed: 1 });
-// el título es el de lo que hay en el editor (tu código guardado), no el del primer tema de la biblioteca
-setCode(initial ?? saved ?? fallback.code, initial ? 'compartido' : saved ? titleFromCode(saved) : fallback.title);
+if (initialTrack) {
+  loadTrack(initialTrack.code, initialTrack.title, null, { id: initialTrack.id, style: initialTrack.style, description: initialTrack.description });
+  setStatus(`"${initialTrack.title}" listo: pulsa ▶ Tocar (o Ctrl+Enter).`, 'ok');
+} else {
+  // el título es el de lo que hay en el editor (tu código guardado), no el del primer tema de la biblioteca
+  setCode(initial ?? saved ?? fallback.code, initial ? 'compartido' : saved ? titleFromCode(saved) : fallback.title);
+}
 if (startupWarnings.length) setStatus(startupWarnings.join('\n'), 'warn');
 
 // expuesto para depurar desde la consola

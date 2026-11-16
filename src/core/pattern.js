@@ -419,6 +419,38 @@ export function run(n) {
   return fastcat(...range(Math.round(num(n))));
 }
 
+// La sucesión de Fibonacci como patrón, un número por paso: fib(8) = 0 1 1 2 3 5 8 13.
+// Con módulo, fib(16, 7) = 0 1 1 2 3 5 1 6 0 6 6 5 4 2 6 1: módulo 7 la sucesión se repite justo cada 16
+// números (periodo de Pisano), así que n(fib(16, 7)).scale("A4:minor") es una melodía de 16 semicorcheas
+// sobre las 7 notas de la escala. La longitud y el módulo pueden ser patrones: fib(16, "<7 5>").
+export function fibonacciList(len, m = null) {
+  const n = Math.round(num(len));
+  const md = m === null || m === undefined ? null : Math.round(num(m));
+  if (!(n >= 1)) throw new Error(`fib(): la longitud tiene que ser 1 o más (llegó ${len})`);
+  // con módulo, a + b < 2·módulo tiene que ser exacto en un número de JS (hasta 2^53)
+  if (md !== null && !(md >= 1 && md <= 2 ** 52)) throw new Error(`fib(): el módulo tiene que ser un entero entre 1 y 2^52 (llegó ${m})`);
+  // sin módulo, F(0)...F(78) son exactos; F(79) ya pasa de 2^53 y se redondearía
+  const max = md === null ? 79 : 4096;
+  if (n > max) throw new Error(`fib(): como mucho ${max} números${md === null ? ' (usa un módulo para más)' : ''}`);
+  const out = [];
+  let a = 0;
+  let b = 1;
+  for (let i = 0; i < n; i++) {
+    out.push(md === null ? a : a % md);
+    [a, b] = md === null ? [b, a + b] : [b, (a + b) % md];
+  }
+  return out;
+}
+export function fib(len = 16, m = null) {
+  const isPat = (x) => x instanceof Pattern || typeof x === 'string';
+  if (isPat(len) || isPat(m)) {
+    return sequenceArgs([reify(len), m === null || m === undefined ? pure(null) : reify(m)])
+      .fmap(([l, mm]) => fib(num(l), mm === null ? null : num(mm)))
+      .innerJoin();
+  }
+  return fastcat(...fibonacciList(len, m));
+}
+
 // ---------------------------------------------------------------------------
 // Aleatoriedad determinista (misma semilla de tiempo => mismo resultado)
 // ---------------------------------------------------------------------------

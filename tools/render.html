@@ -83,7 +83,8 @@
       }
       const rel = v.slice(5);
       if (!LOCAL_FILE.test(rel)) throw new Error(`Sólo se pueden analizar archivos de live/ o tracks/ de este servidor (llegó "${rel}")`);
-      const url = new URL(`/${rel}?t=${Date.now()}`, location.origin);
+      // relativa a la raíz del proyecto (funciona en / y dentro de una subcarpeta, como en GitHub Pages)
+      const url = new URL(`../${rel}?t=${Date.now()}`, location.href);
       if (url.origin !== location.origin) throw new Error('Fuente no local');
       const r = await fetch(url, { cache: 'no-store' });
       if (!r.ok) throw new Error(`No existe ${rel}`);

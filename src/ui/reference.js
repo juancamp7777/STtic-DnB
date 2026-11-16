@@ -52,6 +52,7 @@ export const HELP_HTML = `
 <p><code>"&lt;0 1&gt;".pick([a, b])</code> (o un objeto por nombre) · <code>.pickmod</code> da la vuelta al índice · <code>.inhabit</code> y <code>squeeze("&lt;0 1&gt;", [a, b])</code> meten el ciclo entero en el paso · <code>.inhabitmod</code></p>
 <p><code>polymeter("c eb g", "c2 g2")</code> · <code>s("bd").stack(s("hh*8"))</code> · <code>wchooseCycles([s("bd*4"), 3], [s("bd*8"), 1])</code> (alias <code>wrandcat</code>)</p>
 <p>Señales: <code>sine saw tri square rand perlin irand(8)</code> + <code>.range(a,b)</code> <code>.slow(8)</code> <code>.segment(16)</code> · <code>slider(.5)</code> = valor fijo</p>
+<p><b>Matemática:</b> <code>fib(8)</code> = 0 1 1 2 3 5 8 13 · <code>n(fib(16, 7)).scale("A4:minor")</code> Fibonacci módulo 7 se repite cada 16 (periodo de Pisano): una melodía de un compás · <code>run(8)</code> = 0..7 · <code>"bd(5,8)"</code> euclídeo · <code>.beat("0,3,5,8,13", 16)</code></p>
 <h4>Extras</h4>
 <p><code>all(x =&gt; x.lpf(800))</code> transforma todas las pistas · <code>define("tuneo", (p, f) =&gt; p.lpf(f))</code> o <code>register("tuneo", (f, pat) =&gt; pat.lpf(f))</code> (estilo Strudel)</p>
 <p><b>Sesión</b>: enlaza el estudio con <code>live/sesion.js</code> para que Claude edite el tema contigo en vivo.</p>
@@ -65,5 +66,6 @@ export const HELP_HTML = `
 <li>Mezclador con mute/solo/volumen (también para reverb y delay), sidechain entre pistas, stems.</li>
 <li>Generador de temas por estilo, análisis de mezcla y sesión en vivo con Claude.</li>
 </ul>
+<p><b>Enlaces</b>: <code>#tema=fibonacci</code> al final de la dirección abre ese tema listo para tocar · 🔗 copia un enlace con tu código.</p>
 <p class="hint">¿Quieres comparar con el Strudel original? Abre <a href="strudel/" style="color:var(--accent)">/strudel/</a>.</p>
 </div>`;
