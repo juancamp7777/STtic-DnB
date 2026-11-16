@@ -1,5 +1,5 @@
 // Regresiones de la segunda revisión (verificación adversarial): cada test fija un fallo confirmado y corregido.
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -14,6 +14,23 @@ import { Engine, orbitMap } from '../src/audio/engine.js';
 import { saveTrack, writeIndex, trackModuleSource, analyzeIsolated, normalizeCode } from '../src/tools/indexer.js';
 import { analyzeSong } from '../src/tools/analyze.js';
 import { parseChord } from '../src/core/theory.js';
+
+// carpetas temporales de este archivo: se borran al terminar (en Windows, si algo aún las usa, se dejan)
+const TEMP_DIRS = [];
+const tmpDir = (prefix) => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  TEMP_DIRS.push(d);
+  return d;
+};
+after(() => {
+  for (const d of TEMP_DIRS) {
+    try {
+      fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 });
+    } catch {
+      /* en uso */
+    }
+  }
+});
 
 const { mini, pure, s, n, note } = P;
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -343,7 +360,7 @@ test('samples: descargas con plazo y precarga que informa de los fallos', async 
 
 // ---------------- biblioteca ----------------
 function tempTracksDir() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pulso-r2-'));
+  const dir = tmpDir('pulso-r2-');
   fs.writeFileSync(path.join(dir, 'styles.js'), "export const STYLE_NAMES = { liquid: 'Liquid', dark: 'Dark' };\n");
   return dir;
 }
@@ -452,7 +469,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 test('servidor: byte nulo, biblioteca con avisos (409 → force) y carpeta live/ sustituida', async (t) => {
   const port = 5900 + Math.floor(Math.random() * 300);
   const tracks = tempTracksDir();
-  const live = fs.mkdtempSync(path.join(os.tmpdir(), 'pulso-live-'));
+  const live = tmpDir('pulso-live-');
   const proc = await startServer(port, { PULSO_TRACKS: tracks, PULSO_LIVE: live, PULSO_ANALYZE_MS: '1500' });
   const ctrl = new AbortController();
   t.after(() => {

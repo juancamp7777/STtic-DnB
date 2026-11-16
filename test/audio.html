@@ -362,7 +362,8 @@
     });
 
     await check('distortvol / shapevol: volumen tras saturar', async () => {
-      const r = (c) => engine.render(`bpm(174)\nx: note("c3*4").s("saw")${c}`, { cycles: 1, tail: 0 });
+      // sin la cadena del master (raw): el compresor y el limitador de cada navegador no deben tapar la diferencia
+      const r = (c) => engine.render(`bpm(174)\nx: note("c3*4").s("saw")${c}`, { cycles: 1, tail: 0, raw: true });
       const [a, b, c, d] = await Promise.all([r('.distort(8)'), r('.distort("8:.25")'), r('.shape(.7)'), r('.shape(".7:.25")')]);
       if (!(a.stats.rmsDb - b.stats.rmsDb > 6)) throw new Error(`distortvol: sólo ${(a.stats.rmsDb - b.stats.rmsDb).toFixed(1)} dB menos`);
       if (!(c.stats.rmsDb - d.stats.rmsDb > 6)) throw new Error(`shapevol: sólo ${(c.stats.rmsDb - d.stats.rmsDb).toFixed(1)} dB menos`);
@@ -390,6 +391,37 @@
       const peak = Math.max(1e-9, native.stats.peak);
       if (!(maxDiff < peak * 0.02)) throw new Error(`difiere ${((maxDiff / peak) * 100).toFixed(1)}% del pico`);
       return `diferencia máx ${((maxDiff / peak) * 100).toFixed(3)}% del pico`;
+    });
+
+    await check('export sin OfflineAudioContext.suspend (Firefox) suena igual', async () => {
+      // Firefox no tiene suspend() en el render offline: se programa todo de una vez y tiene que sonar igual
+      const code = TRACKS.find((t) => t.id === 'fibonacci')?.code ?? TRACKS[0].code;
+      const opts = { cycles: 3, from: 13, tail: 0.5 };
+      const proto = OfflineAudioContext.prototype;
+      const desc = Object.getOwnPropertyDescriptor(proto, 'suspend');
+      if (!desc) {
+        const r = await engine.render(code, opts);
+        if (!(r.stats.events > 0 && r.stats.peak > 0.01)) throw new Error(`render vacío: ${r.stats.events} golpes`);
+        return `este navegador no tiene suspend(): render de ${r.stats.events} golpes sin él (pico ${r.stats.peakDb.toFixed(1)} dB)`;
+      }
+      const native = await engine.render(code, opts);
+      delete proto.suspend;
+      let fallback;
+      try {
+        fallback = await engine.render(code, opts);
+      } finally {
+        Object.defineProperty(proto, 'suspend', desc);
+      }
+      if (native.stats.events !== fallback.stats.events) throw new Error(`golpes: ${native.stats.events} con suspend, ${fallback.stats.events} sin él`);
+      let maxDiff = 0;
+      for (let ch = 0; ch < 2; ch++) {
+        const a = native.buffer.getChannelData(ch);
+        const b = fallback.buffer.getChannelData(ch);
+        for (let i = 0; i < a.length; i++) maxDiff = Math.max(maxDiff, Math.abs(a[i] - b[i]));
+      }
+      const peak = Math.max(1e-9, native.stats.peak);
+      if (!(maxDiff < peak * 0.02)) throw new Error(`difiere ${((maxDiff / peak) * 100).toFixed(1)}% del pico`);
+      return `${fallback.stats.events} golpes · diferencia máx ${((maxDiff / peak) * 100).toFixed(3)}% del pico`;
     });
 
     await check('export: los samples que no cargan salen como aviso', async () => {

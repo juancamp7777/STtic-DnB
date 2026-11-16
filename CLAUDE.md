@@ -25,6 +25,7 @@ Sin dependencias: sólo Node ≥ 20 y un navegador. Todo el texto de cara al usu
 1. El usuario abre el estudio y activa **Sesión → Enlazar con live/sesion.js**.
 2. Lo que el usuario toca (Ctrl+Enter) se guarda en `live/sesion.js`; el estado (pistas, BPM,
    errores, avisos, sección elegida `from`, bucle `loop` y compás `cycle`) en `live/estado.json`. Léelos antes de cambiar nada.
+   `estado.json` no va en git (lo reescribe el estudio): si no existe, el usuario aún no ha tocado con la sesión enlazada.
 3. Edita `live/sesion.js`. El estudio lo recarga solo y, si está sonando, cambia en vivo sin parar.
    Si el usuario tiene cambios sin tocar, le aparece un aviso para elegir (nunca se pisa su código).
    El eco se detecta por contenido, así que puedes guardar varias veces seguidas sin problema.
@@ -69,7 +70,7 @@ Sin dependencias: sólo Node ≥ 20 y un navegador. Todo el texto de cara al usu
 - `src/core/` (sin audio): `fraction.js` tiempo racional exacto · `pattern.js` patrones y
   transformaciones · `mini.js` mini-notación · `theory.js` notas/escalas/acordes · `controls.js`
   parámetros · `eval.js` evaluador estilo Strudel (`nombre:`, `$:`, `_mute:`) · `scheduler.js`.
-- `src/audio/`: `engine.js` (tiempo real + render offline por bloques con `suspend`) · `voice.js`
+- `src/audio/`: `engine.js` (tiempo real + render offline por bloques con `suspend`; sin él, como en Firefox, todo de una vez) · `voice.js`
   (grafo por voz) · `params.js` (resolución pura de parámetros, testeada en Node) · `mixer.js`
   (bus por pista, sidechain, reverb, delay, master con anti-DC + compresor + limitador + clipper) ·
   `drums.js` (kit sintetizado) · `samples.js` (formato `strudel.json`, carpetas locales) · `wav.js`.

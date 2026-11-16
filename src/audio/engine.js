@@ -440,13 +440,19 @@ export class Engine {
       }
     };
     const CHUNK = 1;
-    scheduleUntil(CHUNK);
-    for (let k = 1; k * CHUNK < seconds && qi < queue.length; k++) {
-      const at = k * CHUNK;
-      octx.suspend(at).then(() => {
-        scheduleUntil(at + CHUNK);
-        octx.resume();
-      });
+    if (typeof octx.suspend !== 'function') {
+      // Firefox no tiene OfflineAudioContext.suspend(): se programan todas las voces antes de renderizar
+      // (mismo resultado, sólo usa más memoria mientras dura el render)
+      scheduleUntil(Infinity);
+    } else {
+      scheduleUntil(CHUNK);
+      for (let k = 1; k * CHUNK < seconds && qi < queue.length; k++) {
+        const at = k * CHUNK;
+        octx.suspend(at).then(() => {
+          scheduleUntil(at + CHUNK);
+          octx.resume();
+        });
+      }
     }
     const buffer = await octx.startRendering();
     const channels = [buffer.getChannelData(0), buffer.getChannelData(1)];

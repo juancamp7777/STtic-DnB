@@ -90,6 +90,11 @@ function setCode(code, title) {
   errorLine = null;
   updateGutter();
   store.set('pulso.code', code);
+  // parado, la cabecera enseña el BPM del código cargado (al tocar manda el de la evaluación)
+  if (!engine.playing) {
+    const m = /\bbpm\(\s*(\d+(?:\.\d+)?)\s*\)/.exec(code.replace(/\/\/.*$/gm, ''));
+    $('bpm').textContent = m ? String(Math.round(Number(m[1]))) : '—';
+  }
 }
 codeEl.addEventListener('input', () => {
   errorLine = null;
@@ -438,6 +443,9 @@ function renderLibrary() {
     for (const t of list) {
       const c = document.createElement('div');
       c.className = 'card';
+      c.dataset.id = t.id;
+      // la tarjeta del tema cargado sigue marcada aunque la biblioteca se vuelva a pintar
+      if (currentMeta && currentMeta.id === t.id) c.classList.add('active');
       c.innerHTML = '<h4></h4><p></p>';
       c.querySelector('h4').textContent = t.title;
       c.querySelector('p').textContent = t.description || '';
@@ -939,7 +947,7 @@ function enterDemoMode() {
   const note = () => {
     const p = document.createElement('p');
     p.className = 'hint demo-note';
-    p.innerHTML = `Para componer en vivo con Claude y guardar temas en la biblioteca, descarga Pulso desde <a href="${REPO_URL}" target="_blank" rel="noopener">GitHub</a> y ejecuta <code>npm start</code> (sólo hace falta Node).`;
+    p.innerHTML = `Para componer en vivo con Claude y guardar temas en la biblioteca, descarga Pulso desde <a href="${REPO_URL}" target="_blank" rel="noopener">GitHub</a>, ejecuta <code>npm start</code> (sólo hace falta Node) y abre <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a> en esa carpeta.`;
     return p;
   };
   $('tab-ses').appendChild(note());
@@ -960,37 +968,72 @@ renderLibrary();
 loadLibrary();
 renderMine();
 
-// Enlace compartido: se carga una vez y se quita de la barra de direcciones.
+// Enlaces: al abrir el estudio o al cambiar la dirección con el estudio ya abierto. Se cargan y se quitan de la
+// barra de direcciones (history.replaceState no vuelve a disparar hashchange).
 //   #code=...      código compartido con 🔗
 //   #tema=<id>     un tema de la biblioteca (p. ej. #tema=fibonacci): listo para pulsar ▶ Tocar
-// Tu código anterior se guarda en "Mis temas" para no perderlo.
-let initial = null;
-let initialTrack = null;
-if (location.hash.startsWith('#code=')) {
-  try {
-    initial = decodeCode(location.hash.slice(6));
-  } catch {
-    initial = null;
+// Si lo que había en el editor es trabajo tuyo (no es un tema de la biblioteca ni está ya en "Mis temas"),
+// se guarda una copia en "Mis temas" para no perderlo.
+function readHashLink() {
+  const h = location.hash;
+  if (!h.startsWith('#code=') && !h.startsWith('#tema=')) return null;
+  history.replaceState(null, '', location.pathname + location.search);
+  if (h.startsWith('#code=')) {
+    try {
+      return { code: decodeCode(h.slice(6)) };
+    } catch {
+      return { warning: '⚠ El enlace compartido está dañado: no se pudo leer el código.' };
+    }
   }
-  history.replaceState(null, '', location.pathname + location.search);
-} else if (location.hash.startsWith('#tema=')) {
-  const id = decodeURIComponent(location.hash.slice(6));
-  initialTrack = TRACKS.find((t) => t.id === id) || null;
-  if (initialTrack) initial = initialTrack.code;
-  else startupWarnings.push(`⚠ No hay ningún tema "${id}" en la biblioteca.`);
-  history.replaceState(null, '', location.pathname + location.search);
+  let id = h.slice(6);
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    /* un % suelto: se busca tal cual */
+  }
+  const track = library.find((t) => t.id === id) || TRACKS.find((t) => t.id === id);
+  return track ? { code: track.code, track } : { warning: `⚠ No hay ningún tema "${id}" en la biblioteca.` };
 }
+function isKnownCode(code) {
+  return TRACKS.some((t) => t.code === code) || library.some((t) => t.code === code) || mine().some((m) => m.code === code);
+}
+// guarda en "Mis temas" el código que se va a sustituir si es trabajo propio; true si hizo copia
+function backupBeforeLink(previous, next) {
+  if (!previous || !previous.trim() || previous === next || isKnownCode(previous)) return false;
+  return saveMine(`Copia antes de abrir un enlace (${new Date().toLocaleString()})`, previous);
+}
+function libraryCard(id) {
+  return [...document.querySelectorAll('#tab-lib .card')].find((c) => c.dataset.id === id) || null;
+}
+function openLink(link, previous) {
+  const copied = backupBeforeLink(previous, link.code);
+  const note = copied ? '\n💾 Lo que tenías en el editor quedó guardado en «Mis temas».' : '';
+  if (link.track) {
+    const t = link.track;
+    loadTrack(t.code, t.title, libraryCard(t.id), { id: t.id, style: t.style, description: t.description });
+    if (!engine.playing) setStatus(`"${t.title}" listo: pulsa ▶ Tocar (o Ctrl+Enter).${note}`, 'ok');
+  } else {
+    const m = /^\/\/\s*([^\n—-]+)/.exec(link.code.trim());
+    loadTrack(link.code, m ? m[1].trim() : 'compartido', null);
+    if (!engine.playing) setStatus(`Código compartido cargado: pulsa ▶ Tocar (o Ctrl+Enter).${note}`, 'ok');
+  }
+}
+const startLink = readHashLink();
 const saved = store.get('pulso.code', null);
-if (initial !== null && saved && saved !== initial) saveMine(`Copia antes de abrir un enlace (${new Date().toLocaleString()})`, saved);
 const fallback = TRACKS[0] || generateTrack({ style: 'liquid', seed: 1 });
-if (initialTrack) {
-  loadTrack(initialTrack.code, initialTrack.title, null, { id: initialTrack.id, style: initialTrack.style, description: initialTrack.description });
-  setStatus(`"${initialTrack.title}" listo: pulsa ▶ Tocar (o Ctrl+Enter).`, 'ok');
-} else {
+if (startLink?.code != null) openLink(startLink, saved);
+else {
+  if (startLink?.warning) startupWarnings.push(startLink.warning);
   // el título es el de lo que hay en el editor (tu código guardado), no el del primer tema de la biblioteca
-  setCode(initial ?? saved ?? fallback.code, initial ? 'compartido' : saved ? titleFromCode(saved) : fallback.title);
+  setCode(saved ?? fallback.code, saved ? titleFromCode(saved) : fallback.title);
 }
 if (startupWarnings.length) setStatus(startupWarnings.join('\n'), 'warn');
+window.addEventListener('hashchange', () => {
+  const link = readHashLink();
+  if (!link) return;
+  if (link.code != null) openLink(link, codeEl.value);
+  else setStatus(link.warning, 'warn');
+});
 
 // expuesto para depurar desde la consola
 window.pulso = { engine, run, stop, setCode, TRACKS, generateTrack, ses };

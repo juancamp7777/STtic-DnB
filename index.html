@@ -3,8 +3,23 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="icon" href="data:," />
   <title>Pulso · Estudio DnB</title>
+  <meta name="description" content="La música es código. El código es matemática. Estudio de live coding de Drum &amp; Bass que suena en tu navegador: estilo Strudel, sin dependencias y con un tema hecho de Fibonacci." />
+  <meta name="theme-color" content="#0c0d12" />
+  <!-- vista previa al compartir el enlace de la demo -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Pulso" />
+  <meta property="og:locale" content="es_ES" />
+  <meta property="og:title" content="Pulso · La música es código" />
+  <meta property="og:description" content="Drum &amp; Bass escrito como código y tocado en vivo en tu navegador. El código es matemática: un tema entero hecho de Fibonacci." />
+  <meta property="og:url" content="https://juancamp7777.github.io/STtic-DnB/" />
+  <meta property="og:image" content="https://juancamp7777.github.io/STtic-DnB/docs/estudio.png" />
+  <meta property="og:image:width" content="1600" />
+  <meta property="og:image:height" content="1000" />
+  <meta property="og:image:alt" content="El estudio Pulso tocando el tema Fibonacci: editor de código, mezclador, piano roll y espectro" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <!-- icono: una línea de pulso con el color de acento (en línea, sin petición extra) -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c0d12'/%3E%3Cpath d='M6 34h11l6-17 9 31 7-25 5 11h14' fill='none' stroke='%2339e1b4' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="src/ui/style.css" />
 </head>
 <body>
@@ -68,7 +83,7 @@
         <div id="smpList" class="list small"></div>
       </section>
       <section class="panel" id="tab-ses">
-        <p class="hint">Sesión compartida con Claude: tu código se guarda en <code>live/sesion.js</code> cada vez que tocas (Ctrl+Enter), y cuando Claude edita ese archivo el estudio lo recarga en vivo sin parar la música.</p>
+        <p class="hint">Sesión compartida con Claude: tu código se guarda en <code>live/sesion.js</code> cada vez que tocas (Ctrl+Enter), y cuando Claude edita ese archivo el estudio lo recarga en vivo sin parar la música. Claude trabaja desde <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a> abierto en la carpeta del proyecto (lee <code>CLAUDE.md</code>).</p>
         <label class="check"><input id="sesOn" type="checkbox" /> Enlazar con <code>live/sesion.js</code></label>
         <div id="sesState" class="hint">Desconectado.</div>
         <span class="row"><button id="sesPull" class="wide">Cargar sesión</button><button id="sesPush" class="wide">Enviar mi código</button></span>

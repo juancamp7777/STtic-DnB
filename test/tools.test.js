@@ -1,5 +1,5 @@
 // Herramientas de biblioteca (índice, guardado) y servidor (integración real con un proceso aparte).
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -8,10 +8,27 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { slugify, trackModuleSource, writeIndex, saveTrack, trackFiles } from '../src/tools/indexer.js';
 
+// carpetas temporales de este archivo: se borran al terminar (en Windows, si algo aún las usa, se dejan)
+const TEMP_DIRS = [];
+const tmpDir = (prefix) => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  TEMP_DIRS.push(d);
+  return d;
+};
+after(() => {
+  for (const d of TEMP_DIRS) {
+    try {
+      fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 });
+    } catch {
+      /* en uso */
+    }
+  }
+});
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function tempTracksDir() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pulso-tracks-'));
+  const dir = tmpDir('pulso-tracks-');
   fs.writeFileSync(path.join(dir, 'styles.js'), "export const STYLE_NAMES = { liquid: 'Liquid', mio: 'Mi estilo' };\n");
   return dir;
 }

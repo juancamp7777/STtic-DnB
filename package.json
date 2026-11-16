@@ -2,11 +2,26 @@
   "name": "pulso-dnb",
   "version": "0.1.0",
   "description": "Pulso: estudio de live coding para Drum & Bass (motor de patrones estilo Strudel + motor de audio propio)",
+  "license": "MIT",
+  "homepage": "https://juancamp7777.github.io/STtic-DnB/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juancamp7777/STtic-DnB.git"
+  },
+  "keywords": [
+    "live-coding",
+    "drum-and-bass",
+    "strudel",
+    "web-audio",
+    "algorithmic-music",
+    "generative-music",
+    "fibonacci"
+  ],
   "type": "module",
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node tools/run-tests.js"
   },
   "engines": {
     "node": ">=20"

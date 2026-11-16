@@ -61,7 +61,9 @@ bass: F({ "drop drop2": chord(prog).rootNotes("e1").beat("0,3,5,8,13", 16).s("su
 - **Un lenguaje de patrones compatible con Strudel**: mini-notación (`"bd*2 [~ sn] <a b>"`, euclídeos,
   polimetría, rangos), notas, escalas, acordes con voicings, arpegios, señales (`sine`, `perlin`…) y
   transformaciones (`every`, `sometimes`, `off`, `jux`, `chop`, `splice`, `chunk`, `pick`…). Puedes pegar
-  código de [Strudel](https://strudel.cc) y casi todo funciona igual.
+  código de [Strudel](https://strudel.cc) y casi todo el lenguaje funciona igual. Lo que no viene incluido son
+  sus bancos de sonidos de internet (`piano`, `casio`, los `gm_…`): Pulso trae los suyos, sintetizados, y puedes
+  cargar `dirt-samples` u otros desde la pestaña **Samples**.
 - **Un motor de audio propio**: synths (`sub`, `reese`, `supersaw`, `b808`, `fm`, `bell`, `pluck`, `organ`…),
   batería y breaks de jungle **sintetizados** (funciona sin internet), risers, impacts y vinilo, filtros con
   envolvente, wobble sincronizado al tempo, vocales, distorsión, reverb, delay, **sidechain entre pistas** y un
@@ -71,7 +73,8 @@ bass: F({ "drop drop2": chord(prog).rootNotes("e1").beat("0,3,5,8,13", 16).s("su
 - **Un estudio web**: editor, mezclador (mute, solo, volumen y medidor por pista), piano roll, espectro,
   biblioteca de temas, **generador de temas** por estilo y semilla, tocar desde una sección y en bucle,
   exportar **WAV** y **stems**, tus propios samples, salida **MIDI** y enlaces para compartir.
-- **Composición en vivo con Claude**: activa la pestaña **Sesión** y la IA edita el tema contigo mientras suena.
+- **Composición en vivo con Claude**: con el estudio en local y [Claude Code](https://claude.com/claude-code)
+  abierto en la carpeta del proyecto, enlaza la pestaña **Sesión** y Claude edita el tema contigo mientras suena.
 - **Sin dependencias**: sólo Node ≥ 20 para el servidor local y un navegador. Ni siquiera hace falta `npm install`.
 
 ## Empezar
@@ -134,17 +137,21 @@ siempre el mismo.
 
 ## Componer con Claude
 
-Pulso está pensado para componer con una IA al lado:
+Pulso está pensado para componer con una IA al lado. Hace falta el estudio en local y
+[Claude Code](https://claude.com/claude-code) (en la terminal o en la app de escritorio de Claude), que trabaja
+con los archivos de tu ordenador:
 
 1. Arranca el estudio en local (`npm start`) y activa **Sesión → Enlazar con live/sesion.js**.
-2. Lo que tocas se guarda en `live/sesion.js` y el estado (pistas, sección, bucle, avisos) en `live/estado.json`.
-3. Claude edita `live/sesion.js` y el estudio lo recarga **en vivo, sin parar la música**. Si tienes cambios sin
+2. Abre Claude Code en la carpeta del proyecto y pídele lo que quieras: «haz el drop más oscuro», «añade un
+   break de jungle», «compón un tema nuevo conmigo». Al empezar lee [CLAUDE.md](CLAUDE.md), así que ya sabe cómo
+   funciona Pulso.
+3. Lo que tocas se guarda en `live/sesion.js` y el estado (pistas, sección, bucle, avisos) en `live/estado.json`.
+4. Claude edita `live/sesion.js` y el estudio lo recarga **en vivo, sin parar la música**. Si tienes cambios sin
    tocar, te pregunta antes de cargar nada.
-4. Claude también puede "escuchar" la mezcla: `tools/render.html` mide el nivel, los graves y los agudos de cada
+5. Claude también puede "escuchar" la mezcla: `tools/render.html` mide el nivel, los graves y los agudos de cada
    sección y la aportación de cada pista.
 
-El propio proyecto se construyó así, con [Claude](https://claude.ai) (Anthropic) como coautor. Las instrucciones
-para la IA están en [CLAUDE.md](CLAUDE.md).
+El propio proyecto se construyó así, con [Claude](https://claude.ai) (Anthropic) como coautor.
 
 ## Herramientas
 
@@ -185,8 +192,9 @@ npm test
 - **184 tests en Node**: patrones (también con árboles aleatorios y consultas partidas en trozos, que deben dar
   exactamente lo mismo), mini-notación con fuzzing, teoría musical, evaluador, scheduler, el servidor real, la
   biblioteca, cada tema (cero errores y cero avisos) y 7 estilos × 80 semillas del generador.
-- **108 tests de audio en el navegador** (`/test/audio.html`): cada synth y cada sonido del kit renderizados
-  sin conexión, sidechain, grupos de corte, export WAV y stems, y cada tema de la biblioteca.
+- **109 tests de audio en el navegador** (`/test/audio.html`), en verde en Chrome, Edge y Firefox: cada synth y
+  cada sonido del kit renderizados sin conexión, sidechain, grupos de corte, export WAV y stems, y cada tema de la
+  biblioteca.
 - Varias revisiones adversariales con agentes de IA: cada fallo confirmado tiene su test de regresión.
 
 ## Cómo está hecho

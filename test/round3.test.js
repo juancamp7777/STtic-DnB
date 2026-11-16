@@ -1,5 +1,5 @@
 // Regresiones de la tercera revisión (verificación adversarial de la ronda 2): cada test fija un fallo confirmado.
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -17,6 +17,23 @@ import { Engine } from '../src/audio/engine.js';
 import { analyzeSong } from '../src/tools/analyze.js';
 import { saveTrack, writeIndex, trackModuleSource, analyzeIsolated } from '../src/tools/indexer.js';
 import { assertSplitInvariant, assertWellFormed } from './helpers.js';
+
+// carpetas temporales de este archivo: se borran al terminar (en Windows, si algo aún las usa, se dejan)
+const TEMP_DIRS = [];
+const tmpDir = (prefix) => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  TEMP_DIRS.push(d);
+  return d;
+};
+after(() => {
+  for (const d of TEMP_DIRS) {
+    try {
+      fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 });
+    } catch {
+      /* en uso */
+    }
+  }
+});
 
 const { mini, pure, s, n } = P;
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -287,7 +304,7 @@ test('línea de los errores de sintaxis con if/for sin llaves, llaves en otra l�
 
 // ---------------- biblioteca ----------------
 function tempDir(withStyles = true) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pulso-r3-'));
+  const dir = tmpDir('pulso-r3-');
   if (withStyles) fs.writeFileSync(path.join(dir, 'styles.js'), "export const STYLE_NAMES = { liquid: 'Liquid' };\n");
   return dir;
 }
@@ -336,7 +353,7 @@ test('análisis aislado: informe con título y salida rápida si el código nunc
 });
 
 test('CLI: info/check con un bucle infinito fallan con mensaje y código 1 (no se cuelgan)', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pulso-r3-cli-'));
+  const dir = tmpDir('pulso-r3-cli-');
   const file = path.join(dir, 'bucle.js');
   fs.writeFileSync(file, 'while (true) {}\n');
   const env = { ...process.env, PULSO_ANALYZE_MS: '1500' };
@@ -351,7 +368,7 @@ test('CLI: info/check con un bucle infinito fallan con mensaje y código 1 (no s
 // ---------------- servidor ----------------
 test('servidor: /LIVE/ en mayúsculas usa la misma carpeta que /live/', async (t) => {
   const port = 6300 + Math.floor(Math.random() * 300);
-  const live = fs.mkdtempSync(path.join(os.tmpdir(), 'pulso-r3-live-'));
+  const live = tmpDir('pulso-r3-live-');
   fs.writeFileSync(path.join(live, 'hola.js'), 'override()');
   const proc = await new Promise((resolve, reject) => {
     const p = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(port), PULSO_LIVE: live, PULSO_TRACKS: tempDir() } });

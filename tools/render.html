@@ -74,6 +74,7 @@
         if (!/^[\w-]+$/.test(id)) throw new Error(`Id de tema no válido: "${id}"`);
         try {
           const m = await import(`../tracks/${id}.js?v=${Date.now()}`);
+          if (typeof m.default?.code !== 'string') throw new Error('no es un tema (le falta export default { code })');
           return m.default.code;
         } catch (e) {
           const t = TRACKS.find((x) => x.id === id);
@@ -83,6 +84,9 @@
       }
       const rel = v.slice(5);
       if (!LOCAL_FILE.test(rel)) throw new Error(`Sólo se pueden analizar archivos de live/ o tracks/ de este servidor (llegó "${rel}")`);
+      // un tema de tracks/ es un módulo (export default { code }): se carga como ?track=<id>
+      const tm = /^tracks\/([\w-]+)\.js$/.exec(rel);
+      if (tm) return loadCode(`track:${tm[1]}`);
       // relativa a la raíz del proyecto (funciona en / y dentro de una subcarpeta, como en GitHub Pages)
       const url = new URL(`../${rel}?t=${Date.now()}`, location.href);
       if (url.origin !== location.origin) throw new Error('Fuente no local');

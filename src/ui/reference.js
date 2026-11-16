@@ -55,7 +55,7 @@ export const HELP_HTML = `
 <p><b>Matemática:</b> <code>fib(8)</code> = 0 1 1 2 3 5 8 13 · <code>n(fib(16, 7)).scale("A4:minor")</code> Fibonacci módulo 7 se repite cada 16 (periodo de Pisano): una melodía de un compás · <code>run(8)</code> = 0..7 · <code>"bd(5,8)"</code> euclídeo · <code>.beat("0,3,5,8,13", 16)</code></p>
 <h4>Extras</h4>
 <p><code>all(x =&gt; x.lpf(800))</code> transforma todas las pistas · <code>define("tuneo", (p, f) =&gt; p.lpf(f))</code> o <code>register("tuneo", (f, pat) =&gt; pat.lpf(f))</code> (estilo Strudel)</p>
-<p><b>Sesión</b>: enlaza el estudio con <code>live/sesion.js</code> para que Claude edite el tema contigo en vivo.</p>
+<p><b>Sesión</b>: enlaza el estudio con <code>live/sesion.js</code> para que Claude edite el tema contigo en vivo (con el estudio en local y Claude Code abierto en la carpeta del proyecto).</p>
 <p><b>Exportar</b>: ⤓ WAV exporta lo que suena en el mezclador (mute/solo/volúmenes). Con una sección elegida: "tema completo" va desde ella hasta el final; con bucle, sólo esa sección.</p>
 <p>⤓ Stems = un WAV por pista (con el sidechain de las demás, sin el compresor/limitador del master; WAV de 32 bits en coma flotante, así nada se recorta).</p>
 <p><b>Biblioteca</b>: "Mis temas" → Guardar en biblioteca escribe el tema en <code>tracks/</code> (si el analizador da avisos, pregunta antes).</p>

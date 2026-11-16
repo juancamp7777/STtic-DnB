@@ -329,7 +329,7 @@ function safeHandler(req, res) {
 // Sólo loopback: IPv4 y (si existe) IPv6. No se abre a la red.
 const main = http.createServer(safeHandler);
 main.on('error', (e) => {
-  console.error(e.code === 'EADDRINUSE' ? `El puerto ${PORT} está ocupado (¿Pulso ya está abierto?)` : e.message);
+  console.error(e.code === 'EADDRINUSE' ? `El puerto ${PORT} está ocupado (¿Pulso ya está abierto?). Para usar otro: PORT=5174 npm start (en PowerShell: $env:PORT=5174; npm start)` : e.message);
   process.exit(1);
 });
 main.listen(PORT, HOST, () => {

@@ -13,6 +13,8 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+/* la app ocupa la ventana: la cabecera (una o dos líneas) arriba y el resto para el estudio; el editor hace scroll propio */
+body { display: flex; flex-direction: column; }
 button, select, input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
 button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
@@ -29,7 +31,7 @@ input { min-width: 0; }
 .row > input { flex: 1; }
 .hint { color: var(--dim); font-size: 12px; margin: 4px 0 10px; }
 
-.top { display: flex; align-items: center; gap: 16px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+.top { flex: none; display: flex; align-items: center; gap: 16px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
 .brand { font-weight: 800; letter-spacing: 3px; color: var(--accent); font-size: 18px; }
 .brand span { display: block; font-size: 10px; letter-spacing: 1px; color: var(--dim); font-weight: 400; }
 .transport { display: flex; gap: 6px; align-items: center; }
@@ -43,7 +45,7 @@ input { min-width: 0; }
 #meter { background: #000; border-radius: 4px; }
 .export { display: flex; gap: 6px; margin-left: auto; }
 
-.layout { display: grid; grid-template-columns: 270px 1fr 330px; height: calc(100% - 58px); }
+.layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 270px 1fr 330px; grid-template-rows: minmax(0, 1fr); }
 .side, .right { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; }
 .right { border-right: 0; border-left: 1px solid var(--line); display: flex; flex-direction: column; }
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 1; }
@@ -65,7 +67,7 @@ input { min-width: 0; }
 .card .actions button { font-size: 11px; padding: 2px 8px; }
 .group-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); margin: 8px 0 0; }
 
-.center { display: flex; flex-direction: column; min-width: 0; }
+.center { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #2a1f0c; border-bottom: 1px solid var(--warn); color: var(--warn); font-size: 13px; }
 .banner[hidden] { display: none; }
 .banner span { flex: 1; }
@@ -111,7 +113,7 @@ input { min-width: 0; }
   .right { display: none; }
 }
 @media (max-width: 760px) {
-  .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; }
+  .layout { flex: none; grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .side { max-height: 40vh; }
   .editor { min-height: 60vh; }
 }

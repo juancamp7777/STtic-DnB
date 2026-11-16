@@ -454,6 +454,8 @@ export function fib(len = 16, m = null) {
 // ---------------------------------------------------------------------------
 // Aleatoriedad determinista (misma semilla de tiempo => mismo resultado)
 // ---------------------------------------------------------------------------
+// Es el generador de TidalCycles tal como lo usa Strudel (un xorshift de Marsaglia con la escala de 300 ciclos
+// de Tidal): con las mismas constantes, rand, degradeBy, sometimes, choose… dan exactamente lo mismo que allí.
 const xorwise = (x) => {
   const a = (x << 13) ^ x;
   const b = (a >> 17) ^ a;

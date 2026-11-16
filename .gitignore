@@ -5,3 +5,6 @@ node_modules/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Estado de ejecución de la sesión: el estudio lo reescribe en cada Tocar/Parar (live/sesion.js sí va en el repo)
+live/estado.json
